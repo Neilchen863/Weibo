@@ -72,6 +72,7 @@ def process_keyword(keyword, spider, ml_analyzer, config, now):
         results = spider.search_keyword(
             keyword, 
             pages=config["default_pages"], 
+            start_page=config["start_page"],
             download_media=config["download_media"]
         )
         
