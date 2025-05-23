@@ -94,13 +94,14 @@ class WeiboSpider:
         
         return video_urls, []  # 返回空列表作为本地路径，不下载
     
-    def search_keyword(self, keyword, pages=5, download_media=False):
+    def search_keyword(self, keyword, pages, start_page=1, download_media=False):
         """
         根据关键词搜索微博
         
         参数:
         - keyword: 搜索关键词
         - pages: 爬取页数，默认5页
+        - start_page: 开始爬取的页码，默认从第1页开始
         - download_media: 媒体下载标志(简化版中忽略此参数)
         
         返回:
@@ -109,9 +110,10 @@ class WeiboSpider:
         results = []
         self.download_media_enabled = False  # 强制关闭媒体下载
         
-        print(f"准备搜索关键词: {keyword}, 计划爬取 {pages} 页")
+        end_page = start_page + pages - 1
+        print(f"准备搜索关键词: {keyword}, 计划爬取 {start_page} 到 {end_page} 页")
         
-        for page in tqdm(range(1, pages + 1), desc="爬取进度"):
+        for page in tqdm(range(start_page, end_page + 1), desc="爬取进度"):
             try:
                 # 构建搜索URL
                 search_url = f"{self.base_url}?q={keyword}&typeall=1&suball=1&timescope=custom:&page={page}"
@@ -196,9 +198,9 @@ class WeiboSpider:
                             'user_link': user_link,
                             'content': content,
                             'publish_time': publish_time,
-                            'forwards': forwards,
-                            'comments': comments,
-                            'likes': likes,
+                            'forwards': likes ,
+                            'comments': forwards,
+                            'likes': comments,
                             'image_urls': '|'.join(image_urls),
                             'video_urls': '|'.join(video_urls),
                             'has_images': len(image_urls) > 0,
