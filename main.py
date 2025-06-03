@@ -166,18 +166,18 @@ def main():
         if config["cookie"]:
             spider.set_cookies(config["cookie"])
             logging.info("已从配置文件加载Cookie")
-        else:
-            # 如果没有配置Cookie，提示用户输入
-            cookie_str = input("请输入微博Cookie（可选，提高爬取成功率）: ")
-            if cookie_str:
-                spider.set_cookies(cookie_str)
-                # 保存Cookie到配置文件
-                config["cookie"] = cookie_str
-                save_config(config)
+        # else:
+        #     # 如果没有配置Cookie，提示用户输入
+        #     cookie_str = input("请输入微博Cookie（可选，提高爬取成功率）: ")
+        #     if cookie_str:
+        #         spider.set_cookies(cookie_str)
+        #         # 保存Cookie到配置文件
+        #         config["cookie"] = cookie_str
+        #         save_config(config)
         
         # 提示用户输入最低点赞数
         try:
-            min_likes = int(input(f"请输入最低点赞数阈值（默认{config['min_likes']}）: ") or config['min_likes'])
+            min_likes = 5000
             if min_likes != config['min_likes']:
                 config['min_likes'] = min_likes
                 save_config(config)

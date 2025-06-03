@@ -464,7 +464,7 @@ class MLAnalyzer:
             return keyword_trends[:top_n]
             
         except Exception as e:
-            print(f"识别热门话题时出错: {e}")
+            #print(f"识别热门话题时出错: {e}")
             return []
     
     def analyze_weibos(self, weibo_list, min_score=50, min_likes=500, n_clusters=5):
@@ -493,7 +493,7 @@ class MLAnalyzer:
             # 2. 过滤噪声 - 传递min_likes参数
             filtered_weibos = self.filter_noise(weibo_list, min_score=min_score, min_likes=min_likes)
             print(f"过滤后保留 {len(filtered_weibos)} 条有价值内容")
-            print(f"筛选条件: 点赞数 >= {min_likes}")
+            # print(f"筛选条件: 点赞数 >= {min_likes}")
             
             # 3. 话题聚类
             cluster_labels, cluster_keywords = self.cluster_topics(filtered_weibos, n_clusters)

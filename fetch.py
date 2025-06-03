@@ -13,6 +13,7 @@ from fake_useragent import UserAgent
 
 class WeiboSpider:
     def __init__(self):
+        self.seen_weibos = set()
         self.ua = UserAgent()
         self.base_url = "https://s.weibo.com/weibo"
         self.headers = {
@@ -116,7 +117,7 @@ class WeiboSpider:
         for page in tqdm(range(start_page, end_page + 1), desc="爬取进度"):
             try:
                 # 构建搜索URL
-                search_url = f"{self.base_url}?q={keyword}&typeall=1&suball=1&timescope=custom:&page={page}"
+                search_url = f"{self.base_url}?q={keyword}&xsort=hot&page={page}"
                 
                 # 更新请求头
                 self._update_headers()
@@ -154,6 +155,10 @@ class WeiboSpider:
                         # 提取微博ID
                         weibo_id = card.xpath('.//div[@class="from"]/a[1]/@href')
                         weibo_id = weibo_id[0].split('/')[-1] if weibo_id else "未知ID"
+
+                        if weibo_id in self.seen_weibos:
+                            continue
+                        self.seen_weibos.add(weibo_id)
                         
                         # 提取用户信息
                         user_name = card.xpath('.//a[@class="name"]/text()')
