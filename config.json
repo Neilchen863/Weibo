@@ -5,7 +5,7 @@
     "min_score": 1,
     "min_likes": 5000,
     "min_comments": 500,
-    "min_forward":100,
+    "min_forwards":100,
     "download_media": false,
     "max_retries": 3,
     "retry_delay": 5,
