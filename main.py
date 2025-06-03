@@ -87,7 +87,9 @@ def process_keyword(keyword, spider, ml_analyzer, config, now):
         analysis_result = ml_analyzer.analyze_weibos(
             results, 
             min_score=config["min_score"],
-            min_likes=config["min_likes"]  # 传递最低点赞数参数
+            min_likes=config["min_likes"],  # 传递最低点赞数参数
+            min_comments=config["min_comments"] if "min_comments" in config else 0,
+            min_forwards=config["min_forwards"] if "min_forwards" in config else 0
         )
         
         if not analysis_result or "filtered_weibos" not in analysis_result:
