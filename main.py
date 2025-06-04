@@ -224,6 +224,7 @@ def process_keyword(keyword, spider, ml_analyzer, config, now, keyword_to_type):
         
         # 保存过滤后的微博数据
         df = pd.DataFrame(filtered_results)
+        df = clean_and_reorder_dataframe(df)  # 清理和重新排列列
         keyword_file = f"{result_dir}/{keyword}_{now}.csv"
         df.to_csv(keyword_file, index=False, encoding='utf-8-sig')
         logging.info(f"已保存过滤后的结果到 {keyword_file}")
@@ -273,6 +274,43 @@ def load_keyword_classifications():
         logging.error(f"加载关键词分类时出错: {e}")
     
     return keyword_to_type
+
+def clean_and_reorder_dataframe(df):
+    """
+    清理和重新排列DataFrame的列
+    
+    参数:
+    - df: 原始DataFrame
+    
+    返回:
+    - 处理后的DataFrame
+    """
+    # 要删除的列（保留weibo_id用于图片画廊关联）
+    columns_to_remove = [
+        'user_link', 'video_urls', 'image_paths', 
+        'video_paths', 'has_images', 'has_videos', 'content_score', 'image_count'
+    ]
+    
+    # 删除指定列（如果存在）
+    for col in columns_to_remove:
+        if col in df.columns:
+            df = df.drop(columns=[col])
+    
+    # 重新排列列顺序，将type放在第二列
+    if 'type' in df.columns and 'keyword' in df.columns:
+        # 获取所有列
+        all_columns = df.columns.tolist()
+        
+        # 移除keyword和type
+        remaining_columns = [col for col in all_columns if col not in ['keyword', 'type']]
+        
+        # 重新排列：keyword, type, 其他列
+        new_column_order = ['keyword', 'type'] + remaining_columns
+        
+        # 重新排列DataFrame
+        df = df[new_column_order]
+    
+    return df
 
 def main():
     try:
@@ -365,6 +403,7 @@ def main():
         # 保存所有结果到一个合并文件
         if all_results:
             df_all = pd.DataFrame(all_results)
+            df_all = clean_and_reorder_dataframe(df_all)  # 清理和重新排列列
             all_file = f"{result_dir}/all_results_{now}.csv"
             df_all.to_csv(all_file, index=False, encoding='utf-8-sig')
             logging.info(f"\n已保存所有结果到 {all_file}")
