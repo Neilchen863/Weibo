@@ -40,26 +40,75 @@ class WeiboSpider:
         """更新请求头，防止被检测"""
         self.headers["User-Agent"] = self.ua.random
     
-    # 以下媒体下载函数保留但在简化版中不会被调用
     def download_media(self, url, media_type, keyword, weibo_id):
         """
-        下载媒体文件（图片或视频）- 简化版中不会使用此功能
+        下载媒体文件（图片或视频）
+        
+        参数:
+        - url: 媒体文件URL
+        - media_type: 媒体类型 ('image' 或 'video')
+        - keyword: 搜索关键词
+        - weibo_id: 微博ID
+        
+        返回:
+        - 本地文件路径
         """
-        return ""
+        try:
+            # 创建关键词专用目录
+            keyword_dir = os.path.join(self.media_dir, keyword)
+            os.makedirs(keyword_dir, exist_ok=True)
+            
+            # 获取文件扩展名
+            file_ext = url.split('.')[-1].split('?')[0]
+            if file_ext not in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov']:
+                file_ext = 'jpg'  # 默认为jpg
+            
+            # 生成文件名
+            timestamp = int(time.time())
+            filename = f"{media_type}_{weibo_id}_{timestamp}.{file_ext}"
+            file_path = os.path.join(keyword_dir, filename)
+            
+            # 下载文件
+            headers = self.headers.copy()
+            headers['Referer'] = 'https://weibo.com/'
+            
+            response = requests.get(url, headers=headers, timeout=30, stream=True)
+            response.raise_for_status()
+            
+            # 保存文件
+            with open(file_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            print(f"下载成功: {filename}")
+            return file_path
+            
+        except Exception as e:
+            print(f"下载失败 {url}: {e}")
+            return ""
     
     def extract_images(self, card, keyword, weibo_id):
         """
-        提取微博图片链接 - 简化版中不会下载
+        提取微博图片链接并可选下载
+        
+        参数:
+        - card: 微博卡片元素
+        - keyword: 搜索关键词
+        - weibo_id: 微博ID
+        
+        返回:
+        - (image_urls, local_paths) 元组
         """
         # 图片容器通常在这些位置
-        image_nodes = card.xpath('.//div[contains(@class, "media-pic")]//img/@src')
-        
-        # 有时候图片在另一个容器里
-        if not image_nodes:
-            image_nodes = card.xpath('.//div[@node-type="feed_list_media_prev"]//img/@src')
+        image_nodes = card.xpath('.//div[contains(@class, "media-pic")]//img/@src') or \
+                     card.xpath('.//div[@node-type="feed_list_media_prev"]//img/@src') or \
+                     card.xpath('.//img[contains(@class, "pic")]/@src')
         
         # 清理URL地址
         image_urls = []
+        local_paths = []
+        
         for url in image_nodes:
             if url.startswith('//'):
                 url = 'https:' + url
@@ -67,10 +116,19 @@ class WeiboSpider:
             # 将thumbnail链接转换为原图链接
             if '/thumb150/' in url:
                 url = url.replace('/thumb150/', '/large/')
+            elif '/bmiddle/' in url:
+                url = url.replace('/bmiddle/', '/large/')
             
             image_urls.append(url)
+            
+            # 如果启用了媒体下载，则下载图片
+            if self.download_media_enabled:
+                local_path = self.download_media(url, 'image', keyword, weibo_id)
+                if local_path:
+                    local_paths.append(local_path)
+                time.sleep(0.5)  # 短暂延迟，避免请求过快
         
-        return image_urls, []  # 返回空列表作为本地路径，不下载
+        return image_urls, local_paths
     
     def extract_videos(self, card, keyword, weibo_id):
         """
@@ -103,16 +161,18 @@ class WeiboSpider:
         - keyword: 搜索关键词
         - pages: 爬取页数，默认5页
         - start_page: 开始爬取的页码，默认从第1页开始
-        - download_media: 媒体下载标志(简化版中忽略此参数)
+        - download_media: 是否下载媒体文件
         
         返回:
         - 搜索结果列表
         """
         results = []
-        self.download_media_enabled = False  # 强制关闭媒体下载
+        self.download_media_enabled = download_media  # 根据参数设置下载状态
         
         end_page = start_page + pages - 1
         print(f"准备搜索关键词: {keyword}, 计划爬取 {start_page} 到 {end_page} 页")
+        if download_media:
+            print("已启用媒体下载功能")
         
         for page in tqdm(range(start_page, end_page + 1), desc="爬取进度"):
             try:
@@ -186,14 +246,20 @@ class WeiboSpider:
                         if '万' in comments:
                             comments = float(comments.replace('万', '')) * 10000
                         
-                        likes = card.xpath('.//div[@class="card-act"]/ul/li[4]/a/em/text()')
-                        likes = likes[0] if likes else '0'
+                        likes = card.xpath('.//div[@class="card-act"]/ul/li[4]/a/em/text()') or \
+                              card.xpath('.//div[@class="card-act"]/ul/li[1]//text()') or \
+                              card.xpath('.//span[contains(text(), "转发")]/../text()') or \
+                              card.xpath('.//a[contains(@href, "repost")]//text()') or \
+                              card.xpath('.//li[contains(., "转发")]//text()')
+                        likes = ''.join(likes).strip().replace('转发', '').replace(' ', '') if isinstance(likes, list) else (likes or '0')
+                        if likes == '':
+                            likes = '0'
                         if '万' in likes:
                             likes = float(likes.replace('万', '')) * 10000
                         
-                        # 提取图片和视频 (获取链接但不下载)
-                        image_urls, _ = self.extract_images(card, keyword, weibo_id)
-                        video_urls, _ = self.extract_videos(card, keyword, weibo_id)
+                        # 提取图片和视频（根据设置决定是否下载）
+                        image_urls, image_paths = self.extract_images(card, keyword, weibo_id)
+                        video_urls, video_paths = self.extract_videos(card, keyword, weibo_id)
                         
                         # 组织数据
                         weibo_data = {
@@ -203,11 +269,13 @@ class WeiboSpider:
                             'user_link': user_link,
                             'content': content,
                             'publish_time': publish_time,
-                            'forwards': likes ,
-                            'comments': forwards,
-                            'likes': comments,
+                            'forwards': forwards,
+                            'comments': comments,
+                            'likes': likes,
                             'image_urls': '|'.join(image_urls),
                             'video_urls': '|'.join(video_urls),
+                            'image_paths': '|'.join(image_paths),
+                            'video_paths': '|'.join(video_paths),
                             'has_images': len(image_urls) > 0,
                             'has_videos': len(video_urls) > 0,
                             'crawl_time': time.strftime('%Y-%m-%d %H:%M:%S')

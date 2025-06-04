@@ -179,13 +179,11 @@ def main():
         
         # 提示用户输入最低点赞数
         try:
-            min_likes = 5000
-            if min_likes != config['min_likes']:
-                config['min_likes'] = min_likes
-                save_config(config)
-                logging.info(f"已更新最低点赞数阈值为: {min_likes}")
+            # 使用配置文件中的值，而不是硬编码
+            min_likes = config['min_likes']
+            logging.info(f"使用配置文件中的最低点赞数阈值: {min_likes}")
         except ValueError:
-            logging.warning(f"输入无效，使用默认值{config['min_likes']}")
+            logging.warning(f"配置无效，使用默认值{config['min_likes']}")
             min_likes = config['min_likes']
         
         logging.info(f"筛选逻辑: 只保留点赞数 >= {min_likes} 的微博，并对这些微博进行综合评分和排序")

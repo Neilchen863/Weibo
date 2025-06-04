@@ -175,21 +175,64 @@ class WeiboSpider:
                         publish_time = card.xpath('.//div[@class="from"]/a[1]/text()')
                         publish_time = publish_time[0].strip() if publish_time else "未知时间"
                         
-                        # 提取互动数据
-                        forwards = card.xpath('.//div[@class="card-act"]/ul/li[2]//text()')
-                        forwards = ''.join(forwards).strip().replace('转发', '') or '0'
-                        if '万' in forwards:
-                            forwards = float(forwards.replace('万', '')) * 10000
+                        # 提取互动数据 - 使用更精确的XPath策略
+                        # 转发数 - 直接查找包含"转发"文字的元素
+                        forwards_elements = card.xpath('.//span[contains(text(), "转发")]/text()') or \
+                                          card.xpath('.//a[contains(@href, "repost")]//text()') or \
+                                          card.xpath('.//li[contains(., "转发")]//text()') or \
+                                          card.xpath('.//div[@class="card-act"]//li[contains(string(.), "转发")]//text()')
                         
-                        comments = card.xpath('.//div[@class="card-act"]/ul/li[3]//text()')
-                        comments = ''.join(comments).strip().replace('评论', '') or '0'
+                        forwards = '0'
+                        if forwards_elements:
+                            forwards_text = ''.join(forwards_elements)
+                            # 提取数字部分
+                            forwards_match = re.search(r'转发\s*(\d+\.?\d*万?|\d+)', forwards_text)
+                            if forwards_match:
+                                forwards = forwards_match.group(1)
+                            else:
+                                # 如果没找到数字，可能是纯数字
+                                forwards_nums = re.findall(r'(\d+\.?\d*万?)', forwards_text)
+                                if forwards_nums:
+                                    forwards = forwards_nums[0]
+                        
+                        # 处理万字单位
+                        if '万' in str(forwards):
+                            try:
+                                forwards = int(float(str(forwards).replace('万', '')) * 10000)
+                            except:
+                                forwards = '0'
+                        else:
+                            try:
+                                forwards = int(forwards) if forwards.isdigit() else '0'
+                            except:
+                                forwards = '0'
+                        
+                        # 评论数
+                        comments = card.xpath('.//div[@class="card-act"]/ul/li[2]//text()') or \
+                                 card.xpath('.//a[contains(@href, "comment")]//text()') or \
+                                 card.xpath('.//span[contains(text(), "评论")]/..//text()')
+                        comments = ''.join(comments).strip().replace('评论', '').replace(' ', '') or '0'
+                        if comments == '':
+                            comments = '0'
                         if '万' in comments:
-                            comments = float(comments.replace('万', '')) * 10000
+                            try:
+                                comments = int(float(comments.replace('万', '')) * 10000)
+                            except:
+                                comments = '0'
                         
-                        likes = card.xpath('.//div[@class="card-act"]/ul/li[4]/a/em/text()')
-                        likes = likes[0] if likes else '0'
+                        # 点赞数
+                        likes = card.xpath('.//div[@class="card-act"]/ul/li[3]//text()') or \
+                              card.xpath('.//div[@class="card-act"]/ul/li[3]/a/em/text()') or \
+                              card.xpath('.//a[contains(@href, "attitude")]//text()') or \
+                              card.xpath('.//span[contains(text(), "赞")]/..//text()')
+                        likes = ''.join(likes).strip().replace('赞', '').replace(' ', '') or '0'
+                        if likes == '':
+                            likes = '0'
                         if '万' in likes:
-                            likes = float(likes.replace('万', '')) * 10000
+                            try:
+                                likes = int(float(likes.replace('万', '')) * 10000)
+                            except:
+                                likes = '0'
                         
                         # 提取图片和视频 (获取链接但不下载)
                         image_urls, _ = self.extract_images(card, keyword, weibo_id)
@@ -203,9 +246,9 @@ class WeiboSpider:
                             'user_link': user_link,
                             'content': content,
                             'publish_time': publish_time,
-                            'forwards': likes ,
-                            'comments': forwards,
-                            'likes': comments,
+                            'forwards': forwards,
+                            'comments': comments,
+                            'likes': likes,
                             'image_urls': '|'.join(image_urls),
                             'video_urls': '|'.join(video_urls),
                             'has_images': len(image_urls) > 0,
