@@ -14,6 +14,8 @@ import time
 import base64
 from PIL import Image
 import io
+import re
+import unicodedata
 
 # 配置日志
 logging.basicConfig(
@@ -288,13 +290,52 @@ def clean_and_reorder_dataframe(df):
     # 要删除的列（保留weibo_id用于图片画廊关联）
     columns_to_remove = [
         'user_link', 'video_urls', 'image_paths', 
-        'video_paths', 'has_images', 'has_videos', 'content_score', 'image_count'
+        'video_paths', 'has_images', 'has_videos', 'content_score', 'image_count', 'image_base64'
     ]
     
     # 删除指定列（如果存在）
     for col in columns_to_remove:
         if col in df.columns:
             df = df.drop(columns=[col])
+    
+    # 数据清理函数
+    def clean_text(text):
+        if pd.isna(text) or text is None:
+            return ''
+        
+        # 转换为字符串
+        text = str(text)
+        
+        # 移除或替换问题字符
+        # 移除控制字符（除了换行符和制表符）
+        text = re.sub(r'[\x00-\x08\x0B-\x1F\x7F-\x9F]', '', text)
+        
+        # 规范化 Unicode 字符
+        text = unicodedata.normalize('NFKC', text)
+        
+        # 替换换行符为空格
+        text = re.sub(r'\r?\n', ' ', text)
+        
+        # 替换制表符为空格
+        text = re.sub(r'\t', ' ', text)
+        
+        # 移除多余的空格
+        text = re.sub(r'\s+', ' ', text)
+        
+        # 移除首尾空格
+        text = text.strip()
+        
+        # 处理CSV特殊字符（逗号、引号）
+        if ',' in text or '"' in text:
+            text = text.replace('"', '""')  # 转义双引号
+        
+        return text
+    
+    # 对所有文本列进行清理
+    text_columns = ['content', 'user_name', 'publish_time']
+    for col in text_columns:
+        if col in df.columns:
+            df[col] = df[col].apply(clean_text)
     
     # 重新排列列顺序，将type放在第二列
     if 'type' in df.columns and 'keyword' in df.columns:
@@ -304,11 +345,9 @@ def clean_and_reorder_dataframe(df):
         # 移除keyword和type
         remaining_columns = [col for col in all_columns if col not in ['keyword', 'type']]
         
-        # 重新排列：keyword, type, 其他列
-        new_column_order = ['keyword', 'type'] + remaining_columns
-        
-        # 重新排列DataFrame
-        df = df[new_column_order]
+        # 重新排序：keyword, type, 然后是其他列
+        new_order = ['keyword', 'type'] + remaining_columns
+        df = df[new_order]
     
     return df
 

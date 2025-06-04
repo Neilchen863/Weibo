@@ -12,6 +12,15 @@ from datetime import datetime
 from PIL import Image
 import base64
 import io
+import hashlib
+
+def get_image_hash(image_path):
+    """获取图片文件的哈希值用于去重"""
+    try:
+        with open(image_path, 'rb') as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except Exception:
+        return None
 
 def image_to_base64(image_path, max_size=(400, 400)):
     """将图片转换为Base64编码"""
@@ -24,317 +33,420 @@ def image_to_base64(image_path, max_size=(400, 400)):
             # 调整图片大小
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
             
-            # 保存到内存中
+            # 保存到内存
             buffer = io.BytesIO()
-            img.save(buffer, format='JPEG', quality=85)
+            img.save(buffer, format='JPEG', quality=85, optimize=True)
             buffer.seek(0)
             
             # 转换为Base64
-            image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-            return f"data:image/jpeg;base64,{image_base64}"
+            image_data = buffer.getvalue()
+            base64_string = base64.b64encode(image_data).decode('utf-8')
+            
+            return f"data:image/jpeg;base64,{base64_string}"
     except Exception as e:
-        print(f"处理图片 {image_path} 时出错: {e}")
+        print(f"转换图片失败 {image_path}: {e}")
         return None
 
 def create_simple_gallery():
     """创建简化版图片画廊"""
-    media_dir = 'media'
-    results_dir = 'results'
-    
-    if not os.path.exists(media_dir):
-        print("媒体目录不存在")
-        return
+    try:
+        # 查找最新的结果文件
+        results_dir = "results"
+        if not os.path.exists(results_dir):
+            print("结果目录不存在")
+            return None
         
-    # 读取最新的汇总结果
-    result_files = [f for f in os.listdir(results_dir) if f.startswith('all_results_') and f.endswith('.csv')]
-    if not result_files:
-        print("未找到结果文件")
-        return
+        # 查找最新的汇总CSV文件
+        csv_files = [f for f in os.listdir(results_dir) if f.startswith("all_results_") and f.endswith(".csv")]
+        if not csv_files:
+            print("未找到结果文件")
+            return None
         
-    latest_result = sorted(result_files)[-1]
-    result_path = os.path.join(results_dir, latest_result)
-    
-    print(f"读取结果文件: {result_path}")
-    df = pd.read_csv(result_path)
-    
-    # 创建HTML内容
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    html_content = f"""
+        # 选择最新的文件
+        latest_csv = max(csv_files, key=lambda x: os.path.getmtime(os.path.join(results_dir, x)))
+        csv_path = os.path.join(results_dir, latest_csv)
+        
+        print(f"读取结果文件: {csv_path}")
+        
+        # 读取CSV数据
+        try:
+            df = pd.read_csv(csv_path, encoding='utf-8-sig')
+        except:
+            df = pd.read_csv(csv_path, encoding='utf-8')
+        
+        if df.empty:
+            print("CSV文件为空")
+            return None
+        
+        # 全局图片哈希集合，用于去重
+        global_image_hashes = set()
+        
+        # 按关键词分组处理图片
+        keyword_images = {}
+        total_images = 0
+        unique_images = 0
+        
+        for keyword in df['keyword'].unique():
+            print(f"处理关键词: {keyword}")
+            keyword_data = df[df['keyword'] == keyword]
+            keyword_images[keyword] = []
+            
+            for _, row in keyword_data.iterrows():
+                weibo_id = str(row.get('weibo_id', ''))
+                content = str(row.get('content', ''))[:100] + "..." if len(str(row.get('content', ''))) > 100 else str(row.get('content', ''))
+                
+                # 查找对应的图片目录
+                image_dir = f"media/{keyword}"
+                if not os.path.exists(image_dir):
+                    continue
+                
+                # 查找匹配的图片文件
+                for image_file in os.listdir(image_dir):
+                    if weibo_id in image_file:
+                        image_path = os.path.join(image_dir, image_file)
+                        
+                        # 获取图片哈希
+                        image_hash = get_image_hash(image_path)
+                        if not image_hash:
+                            continue
+                        
+                        total_images += 1
+                        
+                        # 只处理唯一图片（全局去重）
+                        if image_hash not in global_image_hashes:
+                            global_image_hashes.add(image_hash)
+                            unique_images += 1
+                            
+                            # 转换为Base64
+                            base64_data = image_to_base64(image_path)
+                            if base64_data:
+                                keyword_images[keyword].append({
+                                    'base64': base64_data,
+                                    'content': content,
+                                    'weibo_id': weibo_id,
+                                    'filename': image_file
+                                })
+            
+            # 显示关键词统计（仅唯一图片）
+            unique_count = len(keyword_images[keyword])
+            if unique_count > 0:
+                print(f"关键词 '{keyword}': {unique_count} 张唯一图片")
+        
+        # 生成HTML
+        now = datetime.now().strftime("%Y%m%d_%H%M%S")
+        html_filename = f"simple_gallery_{now}.html"
+        
+        html_content = f"""
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>微博图片画廊 - {timestamp}</title>
+    <title>微博图片画廊 - {datetime.now().strftime("%Y-%m-%d")}</title>
     <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f8f9fa;
-            color: #333;
-            line-height: 1.6;
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }}
-        .header {{
+        
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }}
+        
+        .container {{
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }}
+        
+        .header {{
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
             color: white;
-            padding: 2rem 0;
             text-align: center;
-            margin-bottom: 2rem;
+            padding: 40px 20px;
         }}
-        .container {{ max-width: 1200px; margin: 0 auto; padding: 0 20px; }}
-        .keyword-section {{ 
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 2rem;
-            overflow: hidden;
+        
+        .header h1 {{
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
         }}
-        .keyword-header {{ 
-            background: #f8f9fa;
-            padding: 1.5rem;
-            border-bottom: 1px solid #e9ecef;
-        }}
-        .keyword-title {{ 
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: #495057;
-            margin-bottom: 0.5rem;
-        }}
-        .keyword-stats {{ 
-            color: #6c757d;
-            font-size: 0.9rem;
-        }}
-        .image-grid {{ 
+        
+        .stats {{
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px auto;
+            max-width: 600px;
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 1.5rem;
-            padding: 1.5rem;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            text-align: center;
         }}
-        .image-card {{ 
-            border-radius: 8px;
-            overflow: hidden;
-            background: white;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        
+        .stat-item {{
+            font-size: 1.1em;
         }}
-        .image-card:hover {{ 
-            transform: translateY(-4px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        
+        .stat-number {{
+            font-size: 2em;
+            font-weight: bold;
+            display: block;
         }}
-        .image-container {{ 
-            height: 250px;
-            overflow: hidden;
-            background: #f8f9fa;
+        
+        .keyword-section {{
+            margin: 40px 0;
+            padding: 0 30px;
         }}
-        .image {{ 
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.3s ease;
-        }}
-        .image-card:hover .image {{ transform: scale(1.05); }}
-        .card-content {{ padding: 1rem; }}
-        .image-filename {{ 
-            font-size: 0.8rem;
-            color: #6c757d;
-            margin-bottom: 0.5rem;
-            word-break: break-all;
-        }}
-        .image-info {{ 
+        
+        .keyword-title {{
+            font-size: 1.8em;
+            color: #333;
+            margin-bottom: 20px;
+            padding: 15px 25px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border-radius: 15px;
             display: flex;
             justify-content: space-between;
-            font-size: 0.85rem;
-            color: #6c757d;
-            margin-bottom: 1rem;
-        }}
-        .weibo-content {{ 
-            background: #f8f9fa;
-            padding: 1rem;
-            border-radius: 6px;
-            border-left: 4px solid #667eea;
-        }}
-        .user-name {{ 
-            font-weight: 600;
-            color: #e6162d;
-            margin-bottom: 0.5rem;
-        }}
-        .content-text {{ 
-            margin-bottom: 0.75rem;
-            line-height: 1.4;
-        }}
-        .stats {{ 
-            display: flex;
-            gap: 1rem;
-            font-size: 0.85rem;
-            color: #6c757d;
-        }}
-        .stat-item {{ 
-            display: flex;
             align-items: center;
-            gap: 0.25rem;
         }}
-        .no-image {{ 
-            background: #e9ecef;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #6c757d;
-            font-size: 0.9rem;
+        
+        .keyword-stats {{
+            font-size: 0.9em;
+            opacity: 0.9;
         }}
-        .summary {{ 
+        
+        .image-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }}
+        
+        .image-card {{
             background: white;
-            border-radius: 12px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }}
+        
+        .image-card:hover {{
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+        }}
+        
+        .image-card img {{
+            width: 100%;
+            height: 250px;
+            object-fit: cover;
+            cursor: pointer;
+        }}
+        
+        .image-info {{
+            padding: 15px;
+        }}
+        
+        .image-content {{
+            font-size: 0.9em;
+            color: #666;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }}
+        
+        .image-meta {{
+            font-size: 0.8em;
+            color: #999;
+            display: flex;
+            justify-content: space-between;
+        }}
+        
+        /* 模态框样式 */
+        .modal {{
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.9);
+        }}
+        
+        .modal-content {{
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 90%;
+            max-height: 90%;
+        }}
+        
+        .modal img {{
+            width: 100%;
+            height: auto;
+            border-radius: 10px;
+        }}
+        
+        .close {{
+            position: absolute;
+            top: 20px;
+            right: 35px;
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+        }}
+        
+        .close:hover {{
+            color: #fff;
+        }}
+        
+        .footer {{
+            text-align: center;
+            padding: 30px;
+            background: #f8f9fa;
+            color: #666;
+            font-size: 0.9em;
+        }}
+        
+        @media (max-width: 768px) {{
+            .image-grid {{
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+                gap: 15px;
+            }}
+            
+            .keyword-title {{
+                font-size: 1.4em;
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }}
         }}
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="container">
-            <h1>微博图片画廊</h1>
-            <p>生成时间: {timestamp}</p>
-        </div>
-    </div>
-    
     <div class="container">
-"""
-    
-    # 统计信息
-    total_images = 0
-    total_keywords = 0
-    
-    # 遍历每个关键词目录
-    for keyword_dir in os.listdir(media_dir):
-        keyword_path = os.path.join(media_dir, keyword_dir)
-        if not os.path.isdir(keyword_path):
-            continue
-            
-        print(f"处理关键词: {keyword_dir}")
-        
-        # 获取该关键词的微博数据
-        keyword_data = df[df['keyword'] == keyword_dir]
-        
-        # 获取图片文件
-        image_files = [f for f in os.listdir(keyword_path) 
-                      if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))]
-        
-        if not image_files:
-            continue
-            
-        total_keywords += 1
-        total_images += len(image_files)
-        
-        # 添加关键词部分
-        html_content += f"""
-        <div class="keyword-section">
-            <div class="keyword-header">
-                <div class="keyword-title">{keyword_dir}</div>
-                <div class="keyword-stats">
-                    微博数量: {len(keyword_data)} | 图片数量: {len(image_files)} | 
-                    分类: {keyword_data.iloc[0]['type'] if not keyword_data.empty and 'type' in keyword_data.columns else '未知'}
+        <div class="header">
+            <h1>🎨 微博图片画廊</h1>
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-number">{len([k for k in keyword_images.keys() if keyword_images[k]])}</span>
+                    关键词
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">{unique_images}</span>
+                    唯一图片
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">{total_images - unique_images}</span>
+                    去重删除
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">{((total_images - unique_images) / total_images * 100) if total_images > 0 else 0:.1f}%</span>
+                    去重率
                 </div>
             </div>
-            <div class="image-grid">
+        </div>
+        
+        <div class="content">
 """
         
-        # 处理前9张图片
-        for i, image_file in enumerate(image_files[:9]):
-            image_path = os.path.join(keyword_path, image_file)
-            
-            # 转换图片为Base64
-            image_base64 = image_to_base64(image_path)
-            
-            # 提取微博ID
-            weibo_id = None
-            if 'image_' in image_file:
-                try:
-                    weibo_id = image_file.split('_')[1].split('?')[0]
-                except:
-                    pass
-            
-            # 查找对应的微博数据
-            weibo_data = None
-            if weibo_id and not keyword_data.empty:
-                matching_weibo = keyword_data[keyword_data['weibo_id'].str.contains(weibo_id, na=False)]
-                if not matching_weibo.empty:
-                    row = matching_weibo.iloc[0]
-                    weibo_data = {
-                        'user_name': str(row['user_name']),
-                        'content': str(row['content'])[:150] + '...' if len(str(row['content'])) > 150 else str(row['content']),
-                        'likes': int(row['likes']) if pd.notna(row['likes']) else 0,
-                        'comments': int(row['comments']) if pd.notna(row['comments']) else 0,
-                        'forwards': int(row['forwards']) if pd.notna(row['forwards']) else 0
-                    }
-            
-            # 获取文件大小
-            file_size = os.path.getsize(image_path)
-            size_mb = round(file_size / (1024 * 1024), 2)
-            
+        # 添加每个关键词的图片
+        for keyword, images in keyword_images.items():
+            if not images:  # 跳过没有唯一图片的关键词
+                continue
+                
             html_content += f"""
-                <div class="image-card">
-                    <div class="image-container">
+            <div class="keyword-section">
+                <div class="keyword-title">
+                    <span>📱 {keyword}</span>
+                    <span class="keyword-stats">{len(images)} 张图片</span>
+                </div>
+                
+                <div class="image-grid">
 """
             
-            if image_base64:
-                html_content += f'<img src="{image_base64}" alt="{image_file}" class="image">'
-            else:
-                html_content += '<div class="no-image">图片加载失败</div>'
-            
-            html_content += f"""
-                    </div>
-                    <div class="card-content">
-                        <div class="image-filename">{image_file}</div>
-                        <div class="image-info">
-                            <span>大小: {size_mb} MB</span>
-                        </div>
-"""
-            
-            if weibo_data:
+            for img_data in images:
                 html_content += f"""
-                        <div class="weibo-content">
-                            <div class="user-name">@{weibo_data['user_name']}</div>
-                            <div class="content-text">{weibo_data['content']}</div>
-                            <div class="stats">
-                                <div class="stat-item">👍 {weibo_data['likes']:,}</div>
-                                <div class="stat-item">💬 {weibo_data['comments']:,}</div>
-                                <div class="stat-item">🔄 {weibo_data['forwards']:,}</div>
+                    <div class="image-card">
+                        <img src="{img_data['base64']}" alt="微博图片" onclick="openModal(this.src)">
+                        <div class="image-info">
+                            <div class="image-content">{img_data['content']}</div>
+                            <div class="image-meta">
+                                <span>ID: {img_data['weibo_id']}</span>
+                                <span>{img_data['filename']}</span>
                             </div>
                         </div>
+                    </div>
 """
             
             html_content += """
-                    </div>
                 </div>
-"""
-        
-        if len(image_files) > 9:
-            html_content += f'<p style="grid-column: 1/-1; text-align: center; color: #6c757d;">还有 {len(image_files) - 9} 张图片...</p>'
-        
-        html_content += """
             </div>
-        </div>
 """
-    
-    # 添加总结信息
-    html_content += f"""
-        <div class="summary">
-            <h2>统计总览</h2>
-            <p>共处理 <strong>{total_keywords}</strong> 个关键词，包含 <strong>{total_images}</strong> 张图片</p>
+        
+        # 添加底部和JavaScript
+        html_content += f"""
+        </div>
+        
+        <div class="footer">
+            <p>🎯 生成时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+            <p>📊 已智能去重，仅显示唯一图片</p>
         </div>
     </div>
+    
+    <!-- 模态框 -->
+    <div id="imageModal" class="modal" onclick="closeModal()">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <div class="modal-content">
+            <img id="modalImage" src="" alt="放大图片">
+        </div>
+    </div>
+    
+    <script>
+        function openModal(src) {{
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImage');
+            modal.style.display = 'block';
+            modalImg.src = src;
+        }}
+        
+        function closeModal() {{
+            document.getElementById('imageModal').style.display = 'none';
+        }}
+        
+        // ESC键关闭模态框
+        document.addEventListener('keydown', function(event) {{
+            if (event.key === 'Escape') {{
+                closeModal();
+            }}
+        }});
+    </script>
 </body>
 </html>
 """
-    
-    # 保存HTML文件
-    html_file = f'simple_gallery_{timestamp}.html'
-    with open(html_file, 'w', encoding='utf-8') as f:
-        f.write(html_content)
-    
-    print(f"简化版图片画廊已保存到: {html_file}")
-    return html_file
+        
+        # 保存HTML文件
+        with open(html_filename, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        print(f"简化版图片画廊已保存到: {html_filename}")
+        print(f"去重统计: 总计 {total_images} 张图片，保留 {unique_images} 张唯一图片，删除 {total_images - unique_images} 张重复图片")
+        
+        return html_filename
+        
+    except Exception as e:
+        print(f"生成图片画廊时出错: {e}")
+        return None
 
 if __name__ == "__main__":
     create_simple_gallery() 
