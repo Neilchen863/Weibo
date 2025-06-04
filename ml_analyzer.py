@@ -356,7 +356,7 @@ class MLAnalyzer:
             print(f"聚类分析时出错: {e}")
             return [], {}
     
-    def filter_noise(self, weibo_list, min_score=50, min_likes=500):
+    def filter_noise(self, weibo_list, min_score=50, min_likes=500, min_comments=0, min_forwards=0):
         """
         过滤低质量内容
         
@@ -364,6 +364,8 @@ class MLAnalyzer:
         - weibo_list: 微博数据列表
         - min_score: 最低质量分数阈值（已弃用，保留参数为了兼容性）
         - min_likes: 最低点赞数（默认500）
+        - min_comments: 最低评论数（默认0）
+        - min_forwards: 最低转发数（默认0）
         
         返回:
         - 过滤后的微博列表
@@ -373,13 +375,17 @@ class MLAnalyzer:
         
         filtered_list = []
         for weibo in weibo_list:
-            # 1. 首先进行硬性筛选 - 点赞数必须达到要求
+            # 1. 进行硬性筛选 - 点赞数、评论数和转发数必须达到要求
             try:
                 likes = int(float(weibo.get('likes', 0)))
+                comments = int(float(weibo.get('comments', 0)))
+                forwards = int(float(weibo.get('forwards', 0)))
             except (ValueError, TypeError):
                 likes = 0
+                comments = 0
+                forwards = 0
                 
-            if likes < min_likes:
+            if likes < min_likes or comments < min_comments or forwards < min_forwards:
                 continue
                 
             # 2. 尝试计算内容分数，但如果出错，不影响筛选结果
@@ -389,7 +395,7 @@ class MLAnalyzer:
             except Exception as e:
                 print(f"计算内容分数时出错: {e}")
                 weibo['content_score'] = 50  # 设置默认分数
-            
+        
             # 3. 添加到保留列表
             filtered_list.append(weibo)
         
@@ -464,10 +470,10 @@ class MLAnalyzer:
             return keyword_trends[:top_n]
             
         except Exception as e:
-            print(f"识别热门话题时出错: {e}")
+            #print(f"识别热门话题时出错: {e}")
             return []
     
-    def analyze_weibos(self, weibo_list, min_score=50, min_likes=500, n_clusters=5):
+    def analyze_weibos(self, weibo_list, min_score=50, min_likes=500, min_comments=0, min_forwards=0, n_clusters=5):
         """
         分析微博列表，执行所有分析步骤
         
@@ -475,6 +481,8 @@ class MLAnalyzer:
         - weibo_list: 微博数据列表
         - min_score: 过滤噪声的最低分数阈值（已弃用，保留参数为了兼容性）
         - min_likes: 最低点赞数（默认500）
+        - min_comments: 最低评论数（默认0）
+        - min_forwards: 最低转发数（默认0）
         - n_clusters: 聚类数量
         
         返回:
@@ -490,10 +498,16 @@ class MLAnalyzer:
             for weibo in weibo_list:
                 weibo['content'] = self.preprocess_text(weibo.get('content', ''))
             
-            # 2. 过滤噪声 - 传递min_likes参数
-            filtered_weibos = self.filter_noise(weibo_list, min_score=min_score, min_likes=min_likes)
+            # 2. 过滤噪声 - 传递所有筛选参数
+            filtered_weibos = self.filter_noise(
+                weibo_list, 
+                min_score=min_score, 
+                min_likes=min_likes,
+                min_comments=min_comments,
+                min_forwards=min_forwards
+            )
             print(f"过滤后保留 {len(filtered_weibos)} 条有价值内容")
-            print(f"筛选条件: 点赞数 >= {min_likes}")
+            print(f"筛选条件: 点赞数 >= {min_likes}, 评论数 >= {min_comments}, 转发数 >= {min_forwards}")
             
             # 3. 话题聚类
             cluster_labels, cluster_keywords = self.cluster_topics(filtered_weibos, n_clusters)
@@ -509,12 +523,14 @@ class MLAnalyzer:
                 "cluster_keywords": cluster_keywords,
                 "trending_topics": trending_topics,
                 "filter_criteria": {
-                    "min_likes": min_likes
+                    "min_likes": min_likes,
+                    "min_comments": min_comments,
+                    "min_forwards": min_forwards
                 }
             }
             
             return result
-            
+        
         except Exception as e:
             print(f"分析微博时出错: {e}")
             return {"error": str(e)}
@@ -568,4 +584,4 @@ class MLAnalyzer:
             if len(feedback_df) % 50 == 0:  # 每收集50条反馈更新一次模型
                 print("检测到足够的新反馈数据，开始更新模型...")
                 # 这里可以实现模型更新逻辑
-                # self._retrain_xgb_model(feedback_df) 
+                # self._retrain_xgb_model(feedback_df)
