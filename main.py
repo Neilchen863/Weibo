@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fetch import WeiboSpider
 from keyword_manager import KeywordManager
 from ml_analyzer import MLAnalyzer
+import time
 
 # 配置日志
 logging.basicConfig(
@@ -63,17 +64,45 @@ def save_config(config):
     except Exception as e:
         logging.error(f"保存配置文件时出错: {e}")
 
+def download_filtered_media(spider, filtered_weibos, keyword):
+    """
+    为通过筛选的高质量微博下载图片
+    
+    参数:
+    - spider: 爬虫实例
+    - filtered_weibos: 筛选后的微博列表
+    - keyword: 关键词
+    """
+    downloaded_count = 0
+    for weibo in filtered_weibos:
+        if weibo.get('has_images', False):
+            image_urls = weibo.get('image_urls', '').split('|')
+            image_paths = []
+            
+            for url in image_urls:
+                if url:
+                    local_path = spider.download_media(url, 'image', keyword, weibo['weibo_id'])
+                    if local_path:
+                        image_paths.append(local_path)
+                        downloaded_count += 1
+                    time.sleep(0.5)  # 避免请求过快
+            
+            # 更新微博数据中的本地路径信息
+            weibo['image_paths'] = '|'.join(image_paths)
+    
+    return downloaded_count
+
 def process_keyword(keyword, spider, ml_analyzer, config, now):
     """处理单个关键词的爬取和分析"""
     try:
         logging.info(f"开始搜索关键词: {keyword}")
         
-        # 获取搜索结果
+        # 获取搜索结果 - 暂时关闭媒体下载
         results = spider.search_keyword(
             keyword, 
             pages=config["default_pages"], 
             start_page=config["start_page"],
-            download_media=config["download_media"]
+            download_media=False  # 先不下载，等筛选后再下载
         )
         
         if not results:
@@ -98,6 +127,12 @@ def process_keyword(keyword, spider, ml_analyzer, config, now):
         
         filtered_results = analysis_result["filtered_weibos"]
         logging.info(f"机器学习分析后保留 {len(filtered_results)} 条高质量微博")
+        
+        # 如果启用了媒体下载，为筛选后的微博下载图片
+        if config["download_media"]:
+            logging.info(f"开始为 {keyword} 的高质量微博下载图片...")
+            downloaded_count = download_filtered_media(spider, filtered_results, keyword)
+            logging.info(f"为关键词 '{keyword}' 下载了 {downloaded_count} 张图片")
         
         # 保存结果
         result_dir = "results"
