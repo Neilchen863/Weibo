@@ -369,6 +369,46 @@ def main():
             df_all.to_csv(all_file, index=False, encoding='utf-8-sig')
             logging.info(f"\n已保存所有结果到 {all_file}")
             logging.info(f"总共获取到 {len(all_results)} 条高质量微博")
+            
+            # 自动生成图片画廊
+            try:
+                from create_simple_gallery import create_simple_gallery
+                logging.info("\n正在生成图片画廊...")
+                html_file = create_simple_gallery()
+                
+                if html_file:
+                    # 获取完整路径
+                    current_dir = os.getcwd()
+                    full_path = os.path.join(current_dir, html_file)
+                    
+                    # 在终端输出HTML文件信息
+                    print("\n" + "="*60)
+                    print("🎨 图片画廊生成完成！")
+                    print("="*60)
+                    print(f"📁 文件位置: {html_file}")
+                    print(f"🔗 完整路径: {full_path}")
+                    print(f"🌐 浏览器访问: file://{full_path}")
+                    print("\n💡 使用方法:")
+                    print(f"   • 直接双击打开: {html_file}")
+                    print(f"   • 或运行命令: open {html_file}")
+                    print("="*60)
+                    
+                    # 询问是否立即打开
+                    try:
+                        user_input = input("\n是否立即在浏览器中打开画廊？(y/N): ").strip().lower()
+                        if user_input in ['y', 'yes', '是']:
+                            import webbrowser
+                            webbrowser.open(f'file://{full_path}')
+                            print("✅ 已在浏览器中打开图片画廊")
+                    except (EOFError, KeyboardInterrupt):
+                        print("\n跳过打开画廊")
+                        
+            except ImportError:
+                logging.warning("图片画廊生成器模块未找到，跳过画廊生成")
+            except Exception as e:
+                logging.error(f"生成图片画廊时出错: {e}")
+        else:
+            logging.warning("未获取到任何结果，无法生成画廊")
         
     except Exception as e:
         logging.error(f"程序运行出错: {e}")
