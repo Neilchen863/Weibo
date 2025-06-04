@@ -381,10 +381,6 @@ def create_simple_gallery():
                         <img src="{img_data['base64']}" alt="微博图片" onclick="openModal(this.src)">
                         <div class="image-info">
                             <div class="image-content">{img_data['content']}</div>
-                            <div class="image-meta">
-                                <span>ID: {img_data['weibo_id']}</span>
-                                <span>{img_data['filename']}</span>
-                            </div>
                         </div>
                     </div>
 """
