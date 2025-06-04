@@ -212,9 +212,27 @@ class WeiboSpider:
                         if not card.xpath('.//div[@class="content"]'):
                             continue
                         
-                        # 提取微博ID
-                        weibo_id = card.xpath('.//div[@class="from"]/a[1]/@href')
-                        weibo_id = weibo_id[0].split('/')[-1] if weibo_id else "未知ID"
+                        # 提取微博ID和构建链接
+                        weibo_id_raw = card.xpath('.//div[@class="from"]/a[1]/@href')
+                        weibo_id = weibo_id_raw[0].split('/')[-1] if weibo_id_raw else "未知ID"
+
+                        # 构建微博链接
+                        if weibo_id_raw:
+                            # 修复URL格式，确保不重复
+                            href = weibo_id_raw[0]
+                            # Debug: 打印href格式
+                            # print(f"DEBUG href: {href}")
+                            
+                            if href.startswith('http'):
+                                post_link = href
+                            elif href.startswith('//weibo.com/'):
+                                post_link = f"https:{href}"
+                            elif href.startswith('/'):
+                                post_link = f"https://weibo.com{href}"
+                            else:
+                                post_link = f"https://weibo.com/{href}"
+                        else:
+                            post_link = ""
 
                         if weibo_id in self.seen_weibos:
                             continue
@@ -267,6 +285,7 @@ class WeiboSpider:
                             'weibo_id': weibo_id,
                             'user_name': user_name,
                             'user_link': user_link,
+                            'post_link': post_link,
                             'content': content,
                             'publish_time': publish_time,
                             'forwards': forwards,
