@@ -14,6 +14,7 @@ from fake_useragent import UserAgent
 class WeiboSpider:
     def __init__(self):
         self.seen_weibos = set()
+        self.downloaded_images = set()  # 跟踪已下载的图片URL
         self.ua = UserAgent()
         self.base_url = "https://s.weibo.com/weibo"
         self.headers = {
@@ -54,19 +55,33 @@ class WeiboSpider:
         - 本地文件路径
         """
         try:
+            # 检查是否已经下载过这个URL
+            if url in self.downloaded_images:
+                print(f"图片已下载过，跳过: {url}")
+                return ""
+            
+            # print(f"DEBUG - 开始下载: {url}")
+            
             # 创建关键词专用目录
             keyword_dir = os.path.join(self.media_dir, keyword)
             os.makedirs(keyword_dir, exist_ok=True)
+            
+            # 从URL中提取更具体的标识符
+            url_parts = url.split('/')
+            unique_id = url_parts[-1].split('?')[0] if url_parts else str(int(time.time()))
             
             # 获取文件扩展名
             file_ext = url.split('.')[-1].split('?')[0]
             if file_ext not in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov']:
                 file_ext = 'jpg'  # 默认为jpg
             
-            # 生成文件名
-            timestamp = int(time.time())
-            filename = f"{media_type}_{weibo_id}_{timestamp}.{file_ext}"
+            # 生成更唯一的文件名
+            timestamp = int(time.time() * 1000)  # 使用毫秒级时间戳
+            random_suffix = random.randint(1000, 9999)
+            filename = f"{media_type}_{weibo_id}_{unique_id}_{timestamp}_{random_suffix}.{file_ext}"
             file_path = os.path.join(keyword_dir, filename)
+            
+            # print(f"DEBUG - 生成文件名: {filename}")
             
             # 下载文件
             headers = self.headers.copy()
@@ -75,13 +90,23 @@ class WeiboSpider:
             response = requests.get(url, headers=headers, timeout=30, stream=True)
             response.raise_for_status()
             
+            # 检查内容类型
+            content_type = response.headers.get('content-type', '')
+            # print(f"DEBUG - 内容类型: {content_type}")
+            
             # 保存文件
             with open(file_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
                         f.write(chunk)
             
-            print(f"下载成功: {filename}")
+            # 检查文件大小
+            file_size = os.path.getsize(file_path)
+            print(f"下载成功: {filename} (大小: {file_size} bytes)")
+            
+            # 记录已下载的URL
+            self.downloaded_images.add(url)
+            
             return file_path
             
         except Exception as e:
@@ -105,6 +130,10 @@ class WeiboSpider:
                      card.xpath('.//div[@node-type="feed_list_media_prev"]//img/@src') or \
                      card.xpath('.//img[contains(@class, "pic")]/@src')
         
+        # Debug: 打印找到的图片节点
+        if image_nodes:
+            print(f"微博{weibo_id}找到{len(image_nodes)}个图片")
+        
         # 清理URL地址
         image_urls = []
         local_paths = []
@@ -119,6 +148,7 @@ class WeiboSpider:
             elif '/bmiddle/' in url:
                 url = url.replace('/bmiddle/', '/large/')
             
+            # print(f"DEBUG - 处理后的图片URL: {url}")
             image_urls.append(url)
             
             # 如果启用了媒体下载，则下载图片
