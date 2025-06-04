@@ -11,6 +11,9 @@ from fetch import WeiboSpider
 from keyword_manager import KeywordManager
 from ml_analyzer import MLAnalyzer
 import time
+import base64
+from PIL import Image
+import io
 
 # 配置日志
 logging.basicConfig(
@@ -64,6 +67,73 @@ def save_config(config):
     except Exception as e:
         logging.error(f"保存配置文件时出错: {e}")
 
+def image_to_base64(image_path, max_size=(300, 300)):
+    """
+    将图片转换为Base64编码字符串
+    
+    参数:
+    - image_path: 图片文件路径
+    - max_size: 最大尺寸(宽, 高)，用于压缩图片
+    
+    返回:
+    - Base64编码字符串
+    """
+    try:
+        if not os.path.exists(image_path):
+            return ""
+        
+        # 打开图片并调整大小以减少文件大小
+        with Image.open(image_path) as img:
+            # 转换为RGB（如果是RGBA等格式）
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
+            
+            # 计算缩放比例，保持长宽比
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
+            
+            # 将图片保存到内存中
+            buffer = io.BytesIO()
+            img.save(buffer, format='JPEG', quality=85, optimize=True)
+            buffer.seek(0)
+            
+            # 转换为Base64
+            image_data = buffer.getvalue()
+            base64_string = base64.b64encode(image_data).decode('utf-8')
+            
+            return f"data:image/jpeg;base64,{base64_string}"
+    
+    except Exception as e:
+        logging.warning(f"转换图片到Base64时出错 {image_path}: {e}")
+        return ""
+
+def add_image_data_to_weibos(weibos):
+    """
+    为微博数据添加图片的Base64编码
+    
+    参数:
+    - weibos: 微博数据列表
+    
+    返回:
+    - 包含图片数据的微博列表
+    """
+    for weibo in weibos:
+        image_paths = weibo.get('image_paths', '')
+        base64_images = []
+        
+        if image_paths:
+            paths = image_paths.split('|')
+            for path in paths:
+                if path and os.path.exists(path):
+                    base64_data = image_to_base64(path)
+                    if base64_data:
+                        base64_images.append(base64_data)
+        
+        # 添加Base64图片数据到微博信息中
+        weibo['image_base64'] = '|'.join(base64_images) if base64_images else ''
+        weibo['image_count'] = len(base64_images)
+    
+    return weibos
+
 def download_filtered_media(spider, filtered_weibos, keyword):
     """
     为通过筛选的高质量微博下载图片
@@ -92,10 +162,14 @@ def download_filtered_media(spider, filtered_weibos, keyword):
     
     return downloaded_count
 
-def process_keyword(keyword, spider, ml_analyzer, config, now):
+def process_keyword(keyword, spider, ml_analyzer, config, now, keyword_to_type):
     """处理单个关键词的爬取和分析"""
     try:
         logging.info(f"开始搜索关键词: {keyword}")
+        
+        # 获取关键词的分类
+        keyword_type = keyword_to_type.get(keyword, "unknown")
+        logging.info(f"关键词 '{keyword}' 的分类: {keyword_type}")
         
         # 获取搜索结果 - 暂时关闭媒体下载
         results = spider.search_keyword(
@@ -128,11 +202,21 @@ def process_keyword(keyword, spider, ml_analyzer, config, now):
         filtered_results = analysis_result["filtered_weibos"]
         logging.info(f"机器学习分析后保留 {len(filtered_results)} 条高质量微博")
         
+        # 为每条微博添加关键词分类信息
+        for weibo in filtered_results:
+            weibo['type'] = keyword_type
+        
         # 如果启用了媒体下载，为筛选后的微博下载图片
         if config["download_media"]:
             logging.info(f"开始为 {keyword} 的高质量微博下载图片...")
             downloaded_count = download_filtered_media(spider, filtered_results, keyword)
             logging.info(f"为关键词 '{keyword}' 下载了 {downloaded_count} 张图片")
+        
+        # 添加图片Base64数据到微博中
+        if config["download_media"]:
+            logging.info(f"正在处理图片数据...")
+            filtered_results = add_image_data_to_weibos(filtered_results)
+            logging.info(f"图片数据处理完成")
         
         # 保存结果
         result_dir = "results"
@@ -161,6 +245,34 @@ def process_keyword(keyword, spider, ml_analyzer, config, now):
     except Exception as e:
         logging.error(f"处理关键词 '{keyword}' 时出错: {e}")
         return None
+
+def load_keyword_classifications():
+    """
+    加载关键词分类信息
+    
+    返回:
+    - 关键词到分类的映射字典
+    """
+    classification_file = "keyword and classification.txt"
+    keyword_to_type = {}
+    
+    try:
+        if os.path.exists(classification_file):
+            df = pd.read_csv(classification_file, encoding='utf-8')
+            # 创建关键词到分类的映射
+            for _, row in df.iterrows():
+                keyword = row.iloc[0]  # 第一列是关键词
+                classification = row.iloc[1]  # 第二列是分类
+                keyword_to_type[keyword] = classification
+            
+            logging.info(f"成功加载 {len(keyword_to_type)} 个关键词分类")
+        else:
+            logging.warning(f"分类文件 {classification_file} 不存在")
+    
+    except Exception as e:
+        logging.error(f"加载关键词分类时出错: {e}")
+    
+    return keyword_to_type
 
 def main():
     try:
@@ -228,12 +340,15 @@ def main():
         ml_analyzer = MLAnalyzer()
         logging.info("机器学习分析器初始化完成")
         
+        # 加载关键词分类信息
+        keyword_to_type = load_keyword_classifications()
+        
         # 使用线程池处理关键词
         all_results = []
         with ThreadPoolExecutor(max_workers=config["thread_pool_size"]) as executor:
             # 提交所有任务
             future_to_keyword = {
-                executor.submit(process_keyword, keyword, spider, ml_analyzer, config, now): keyword 
+                executor.submit(process_keyword, keyword, spider, ml_analyzer, config, now, keyword_to_type): keyword 
                 for keyword in keywords
             }
             
