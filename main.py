@@ -280,6 +280,8 @@ def process_keyword(keyword, spider, ml_analyzer, config, now, keyword_to_type):
         # 保存过滤后的微博数据
         df = pd.DataFrame(filtered_results)
         df = clean_and_reorder_dataframe(df)  # 清理和重新排列列
+        # 按点赞量降序排序
+        df = df.sort_values(by='likes', ascending=False)
         keyword_file = f"{result_dir}/{keyword}_{now}.csv"
         df.to_csv(keyword_file, index=False, encoding='utf-8-sig')
         logging.info(f"已保存过滤后的结果到 {keyword_file}")
@@ -496,6 +498,8 @@ def main():
         if all_results:
             df_all = pd.DataFrame(all_results)
             df_all = clean_and_reorder_dataframe(df_all)  # 清理和重新排列列
+            # 按点赞量降序排序
+            df_all = df_all.sort_values(by='likes', ascending=False)
             all_file = f"{result_dir}/all_results_{now}.csv"
             df_all.to_csv(all_file, index=False, encoding='utf-8-sig')
             logging.info(f"\n已保存所有结果到 {all_file}")
