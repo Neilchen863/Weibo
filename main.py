@@ -5,7 +5,7 @@ import os
 import json
 import logging
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from fetch import WeiboSpider
 from keyword_manager import KeywordManager
@@ -164,6 +164,43 @@ def download_filtered_media(spider, filtered_weibos, keyword):
     
     return downloaded_count
 
+def parse_weibo_time(time_str, now=None):
+    """
+    解析微博时间字符串为 datetime 对象。
+    支持格式：'5分钟前'、'今天 12:34'、'昨天 12:34'、'2024-05-23 12:34'等。
+    """
+    if now is None:
+        now = datetime.now()
+    time_str = str(time_str).strip()
+    if not time_str or time_str == '未知时间':
+        return None
+    try:
+        if '分钟前' in time_str:
+            minutes = int(time_str.replace('分钟前', '').strip())
+            return now - timedelta(minutes=minutes)
+        elif '小时前' in time_str:
+            hours = int(time_str.replace('小时前', '').strip())
+            return now - timedelta(hours=hours)
+        elif '今天' in time_str:
+            t = time_str.replace('今天', '').strip()
+            dt = datetime.strptime(t, '%H:%M')
+            return now.replace(hour=dt.hour, minute=dt.minute, second=0, microsecond=0)
+        elif '昨天' in time_str:
+            t = time_str.replace('昨天', '').strip()
+            dt = datetime.strptime(t, '%H:%M')
+            dt = now.replace(hour=dt.hour, minute=dt.minute, second=0, microsecond=0) - timedelta(days=1)
+            return dt
+        elif '-' in time_str:
+            # 可能是 '05-23 12:34' 或 '2024-05-23 12:34'
+            if len(time_str) == 11:  # '05-23 12:34'
+                t = f"{now.year}-{time_str}"
+                return datetime.strptime(t, '%Y-%m-%d %H:%M')
+            elif len(time_str) == 16:  # '2024-05-23 12:34'
+                return datetime.strptime(time_str, '%Y-%m-%d %H:%M')
+    except Exception:
+        pass
+    return None
+
 def process_keyword(keyword, spider, ml_analyzer, config, now, keyword_to_type):
     """处理单个关键词的爬取和分析"""
     try:
@@ -187,10 +224,26 @@ def process_keyword(keyword, spider, ml_analyzer, config, now, keyword_to_type):
         
         logging.info(f"获取到 {len(results)} 条微博")
         
+        # ====== 新增：筛选最近两天且有图片或有视频的微博 ======
+        now_dt = datetime.now()
+        two_days_ago = now_dt - timedelta(days=2)
+        filtered_by_time_and_media = []
+        for weibo in results:
+            dt = parse_weibo_time(weibo.get('publish_time', ''), now=now_dt)
+            has_img = weibo.get('has_images', False)
+            has_vid = weibo.get('has_videos', False)
+            if dt and dt >= two_days_ago and (has_img or has_vid):
+                filtered_by_time_and_media.append(weibo)
+        logging.info(f"筛选后剩余 {len(filtered_by_time_and_media)} 条微博")
+        if not filtered_by_time_and_media:
+            logging.warning(f"最近两天没有关键词 '{keyword}' 的相关图片或视频微博")
+            return None
+        # ====== 后续分析用 filtered_by_time_and_media 替换 results ======
+        
         # 应用机器学习分析
         logging.info("正在进行机器学习分析...")
         analysis_result = ml_analyzer.analyze_weibos(
-            results, 
+            filtered_by_time_and_media, 
             min_score=config["min_score"],
             min_likes=config["min_likes"],  # 传递最低点赞数参数
             min_comments=config["min_comments"] if "min_comments" in config else 0,
