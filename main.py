@@ -289,7 +289,7 @@ def clean_and_reorder_dataframe(df):
     """
     # 要删除的列（保留weibo_id用于图片画廊关联）
     columns_to_remove = [
-        'user_link', 'video_urls', 'image_paths', 
+        'user_link', 'video_urls', 'image_paths', 'type'
         'video_paths', 'has_images', 'has_videos', 'content_score', 'image_count', 'image_base64'
     ]
     
