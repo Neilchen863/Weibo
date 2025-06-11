@@ -23,7 +23,6 @@
 红毯,other
 合体,other
 同框,other
-互动,other
 营业,other
 live,other
 cut,other

@@ -406,105 +406,108 @@ def clean_and_reorder_dataframe(df):
     
     return df
 
-def main():
+def read_keywords(file_path):
+    """读取关键词列表文件"""
     try:
-        # 加载配置
-        config = load_config()
+        with open(file_path, 'r', encoding='utf-8') as f:
+            # 过滤掉空行
+            return [line.strip() for line in f if line.strip()]
+    except Exception as e:
+        print(f"读取{file_path}失败: {str(e)}")
+        return []
+
+def read_user_urls(file_path):
+    """读取用户URL列表文件"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            # 过滤掉空行和注释行
+            return [line.strip() for line in f if line.strip() and not line.startswith('#')]
+    except Exception as e:
+        print(f"读取{file_path}失败: {str(e)}")
+        return []
+
+def main():
+    # 加载配置
+    config = load_config()
+    
+    # 读取关键词列表
+    keywords = read_keywords('keywords.txt')
+    if not keywords:
+        logging.error("未在keywords.txt中找到任何关键词")
+        return
+
+    logging.info(f"从keywords.txt中读取到 {len(keywords)} 个关键词")
+
+    # 读取用户URL列表
+    user_urls = read_user_urls('user_urls.txt')
+    if not user_urls:
+        logging.error("user_urls.txt中没有找到有效的用户URL")
+        return
+
+    logging.info(f"从user_urls.txt中读取到 {len(user_urls)} 个用户URL")
+
+    # 创建爬虫实例
+    spider = WeiboSpider()
+
+    # 创建结果目录
+    result_dir = "results"
+    os.makedirs(result_dir, exist_ok=True)
+
+    # 当前时间，用于文件命名
+    now = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # 存储所有结果
+    all_results = []
+
+    # 处理每个用户
+    for i, user_url in enumerate(user_urls, 1):
+        logging.info(f"\n处理第 {i}/{len(user_urls)} 个用户: {user_url}")
+        user_id = spider._extract_user_id(user_url) or f"user_{i}"
         
-        # 创建结果目录
-        result_dir = "results"
-        os.makedirs(result_dir, exist_ok=True)
-        
-        # 创建关键词管理器
-        keyword_manager = KeywordManager()
-        
-        # 从文件加载关键词
-        keywords = keyword_manager.load_from_file()
-        
-        # 如果没有关键词，使用默认的示例关键词
-        if not keywords:
-            logging.warning("未找到关键词文件或文件为空，使用示例关键词")
-            keywords = [
-                "示例关键词1",
-                "示例关键词2",
-                "示例关键词3",
-            ]
-            # 保存示例关键词到文件
-            keyword_manager.add_keywords(keywords)
-            keyword_manager.save_to_file()
-        
-        # 当前时间，用于文件命名
-        now = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # 创建爬虫实例
-        spider = WeiboSpider()
-        
-        # 设置代理（如果配置了的话）
-        if config["proxy"]:
-            spider.set_proxy(config["proxy"])
-        
-        # 使用配置文件中的Cookie
-        if config["cookie"]:
-            spider.set_cookies(config["cookie"])
-            logging.info("已从配置文件加载Cookie")
-        # else:
-        #     # 如果没有配置Cookie，提示用户输入
-        #     cookie_str = input("请输入微博Cookie（可选，提高爬取成功率）: ")
-        #     if cookie_str:
-        #         spider.set_cookies(cookie_str)
-        #         # 保存Cookie到配置文件
-        #         config["cookie"] = cookie_str
-        #         save_config(config)
-        
-        # 提示用户输入最低点赞数
+        # 对每个关键词进行搜索
+        for keyword in keywords:
+            logging.info(f"\n搜索关键词: {keyword}")
+            try:
+                # 爬取该用户的微博
+                results = spider.search_keyword(
+                    user_url=user_url,
+                    keyword=keyword,
+                    pages=1,  # 固定为1页
+                    download_media=config["download_media"]
+                )
+                
+                if results:
+                    # 为每条微博添加用户ID和关键词信息
+                    for result in results:
+                        result['user_id'] = user_id
+                        result['keyword'] = keyword
+                    all_results.extend(results)
+                    logging.info(f"找到 {len(results)} 条包含关键词 '{keyword}' 的微博")
+                else:
+                    logging.info(f"未找到包含关键词 '{keyword}' 的微博")
+                
+            except Exception as e:
+                logging.error(f"处理关键词 {keyword} 时出错: {str(e)}")
+                continue
+
+    # 保存所有结果到CSV文件
+    if all_results:
         try:
-            # 使用配置文件中的值，而不是硬编码
-            min_likes = config['min_likes']
-            logging.info(f"使用配置文件中的最低点赞数阈值: {min_likes}")
-        except ValueError:
-            logging.warning(f"配置无效，使用默认值{config['min_likes']}")
-            min_likes = config['min_likes']
-        
-        logging.info(f"筛选逻辑: 只保留点赞数 >= {min_likes} 的微博，并对这些微博进行综合评分和排序")
-        
-        # 创建机器学习分析器实例
-        logging.info("正在初始化机器学习分析器...")
-        ml_analyzer = MLAnalyzer()
-        logging.info("机器学习分析器初始化完成")
-        
-        # 加载关键词分类信息
-        keyword_to_type = load_keyword_classifications()
-        
-        # 使用线程池处理关键词
-        all_results = []
-        with ThreadPoolExecutor(max_workers=config["thread_pool_size"]) as executor:
-            # 提交所有任务
-            future_to_keyword = {
-                executor.submit(process_keyword, keyword, spider, ml_analyzer, config, now, keyword_to_type): keyword 
-                for keyword in keywords
-            }
-            
-            # 收集结果
-            for future in future_to_keyword:
-                keyword = future_to_keyword[future]
-                try:
-                    results = future.result()
-                    if results:
-                        all_results.extend(results)
-                except Exception as e:
-                    logging.error(f"处理关键词 '{keyword}' 时出错: {e}")
-        
-        # 保存所有结果到一个合并文件
-        if all_results:
+            # 转换为DataFrame
             df_all = pd.DataFrame(all_results)
-            df_all = clean_and_reorder_dataframe(df_all)  # 清理和重新排列列
-            # 按点赞量降序排序
-            df_all = df_all.sort_values(by='likes', ascending=False)
-            all_file = f"{result_dir}/all_results_{now}.csv"
-            df_all.to_csv(all_file, index=False, encoding='utf-8-sig')
-            logging.info(f"\n已保存所有结果到 {all_file}")
-            logging.info(f"总共获取到 {len(all_results)} 条高质量微博")
             
+            # 清理和重新排序DataFrame
+            df_all = clean_and_reorder_dataframe(df_all)
+            
+            # 按点赞量降序排序
+            df_all = df_all.sort_values(by='attitudes_count', ascending=False)
+            
+            # 保存为CSV
+            output_file = os.path.join(result_dir, f"all_results_{now}.csv")
+            df_all.to_csv(output_file, index=False, encoding='utf-8-sig')
+            logging.info(f"\n已保存所有结果到: {output_file}")
+            logging.info(f"总共获取到 {len(all_results)} 条微博")
+
             # 自动生成图片画廊
             try:
                 from create_simple_gallery import create_simple_gallery
@@ -542,12 +545,10 @@ def main():
                 logging.warning("图片画廊生成器模块未找到，跳过画廊生成")
             except Exception as e:
                 logging.error(f"生成图片画廊时出错: {e}")
-        else:
-            logging.warning("未获取到任何结果，无法生成画廊")
-        
-    except Exception as e:
-        logging.error(f"程序运行出错: {e}")
-        raise
+        except Exception as e:
+            logging.error(f"保存结果到CSV时出错: {str(e)}")
+    else:
+        logging.warning("未获取到任何结果")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
