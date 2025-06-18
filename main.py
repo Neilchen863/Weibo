@@ -333,78 +333,42 @@ def load_keyword_classifications():
     return keyword_to_type
 
 def clean_and_reorder_dataframe(df):
-    """
-    清理和重新排列DataFrame的列
-    
-    参数:
-    - df: 原始DataFrame
-    
-    返回:
-    - 处理后的DataFrame
-    """
-    # 要删除的列（保留weibo_id用于图片画廊关联）
-    columns_to_remove = [
-        'user_link', 'video_urls', 'image_paths', 'type'
-        'video_paths', 'has_images', 'has_videos', 'content_score', 'image_count', 'image_base64'
-    ]
-    
-    # 删除指定列（如果存在）
-    for col in columns_to_remove:
-        if col in df.columns:
-            df = df.drop(columns=[col])
-    
-    # 数据清理函数
-    def clean_text(text):
-        if pd.isna(text) or text is None:
-            return ''
+    """清理和重新排序DataFrame"""
+    try:
+        # 移除不需要的列
+        columns_to_drop = ['user_id', 'image_urls', 'local_image_paths', 'source']
+        df = df.drop(columns=[col for col in columns_to_drop if col in df.columns])
         
-        # 转换为字符串
-        text = str(text)
+        # 确保有post_link列
+        if 'post_link' not in df.columns and 'weibo_id' in df.columns:
+            df['post_link'] = df['weibo_id'].apply(lambda x: f"https://weibo.com/detail/{x}")
         
-        # 移除或替换问题字符
-        # 移除控制字符（除了换行符和制表符）
-        text = re.sub(r'[\x00-\x08\x0B-\x1F\x7F-\x9F]', '', text)
+        # 清理content列中的换行符
+        if 'content' in df.columns:
+            df['content'] = df['content'].apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip())
         
-        # 规范化 Unicode 字符
-        text = unicodedata.normalize('NFKC', text)
+        # 定义列的顺序，keyword放在第一列
+        desired_columns = [
+            'keyword',  # 放在第一位
+            'user_name',
+            'weibo_id',
+            'content',
+            'publish_time',
+            'reposts_count',
+            'comments_count',
+            'attitudes_count',
+            'post_link',
+            'content_score'  # 如果有的话
+        ]
         
-        # 替换换行符为空格
-        text = re.sub(r'\r?\n', ' ', text)
+        # 只保留实际存在的列，按照期望的顺序
+        existing_columns = [col for col in desired_columns if col in df.columns]
+        df = df[existing_columns]
         
-        # 替换制表符为空格
-        text = re.sub(r'\t', ' ', text)
-        
-        # 移除多余的空格
-        text = re.sub(r'\s+', ' ', text)
-        
-        # 移除首尾空格
-        text = text.strip()
-        
-        # 处理CSV特殊字符（逗号、引号）
-        if ',' in text or '"' in text:
-            text = text.replace('"', '""')  # 转义双引号
-        
-        return text
-    
-    # 对所有文本列进行清理
-    text_columns = ['content', 'user_name', 'publish_time']
-    for col in text_columns:
-        if col in df.columns:
-            df[col] = df[col].apply(clean_text)
-    
-    # 重新排列列顺序，将type放在第二列
-    if 'type' in df.columns and 'keyword' in df.columns:
-        # 获取所有列
-        all_columns = df.columns.tolist()
-        
-        # 移除keyword和type
-        remaining_columns = [col for col in all_columns if col not in ['keyword', 'type']]
-        
-        # 重新排序：keyword, type, 然后是其他列
-        new_order = ['keyword', 'type'] + remaining_columns
-        df = df[new_order]
-    
-    return df
+        return df
+    except Exception as e:
+        logging.error(f"清理DataFrame时出错: {e}")
+        return df
 
 def read_keywords(file_path):
     """读取关键词列表文件"""

@@ -269,6 +269,8 @@ class WeiboSpider:
                         # 获取微博文本内容
                         content = weibo.get('text_raw', '')
                         
+                        user_name = weibo.get('user_name', '')
+
                         # 检查是否包含关键词（不区分大小写）
                         if keyword.lower() not in content.lower():
                             continue
@@ -296,6 +298,7 @@ class WeiboSpider:
                         
                         weibo_data = {
                             'weibo_id': weibo_id,
+                            'user_name': user_name,
                             'user_id': user_id,
                             'content': content,
                             'publish_time': weibo.get('created_at', '未知时间'),
