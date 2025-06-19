@@ -136,25 +136,19 @@ class WeiboSpider:
         end_page = start_page + pages - 1
         print(f"准备在用户 {user_id} 的主页中搜索关键词 '{keyword}', 计划爬取 {start_page} 到 {end_page} 页")
         
-        for page in tqdm(range(start_page, end_page + 1), desc="爬取进度"):
+        for page in range(start_page, end_page + 1):
             try:
-                # 构建用户微博列表页URL，添加关键词参数
-                search_url = f"https://weibo.com/ajax/statuses/mymblog?uid={user_id}&page={page}&feature=0"
+                print(f"正在爬取第 {page} 页...")
                 
-                # 更新请求头
-                self._update_headers()
+                # 构建API URL
+                api_url = f"https://weibo.com/ajax/statuses/mymblog?uid={user_id}&page={page}"
                 
                 # 发送请求
-                response = requests.get(
-                    search_url, 
-                    headers=self.headers, 
-                    cookies=self.cookies, 
-                    timeout=10
-                )
+                self._update_headers()
+                response = requests.get(api_url, headers=self.headers, cookies=self.cookies)
                 
-                # 检查响应状态
                 if response.status_code != 200:
-                    print(f"请求失败，状态码: {response.status_code}")
+                    print(f"页面 {page} 请求失败: {response.status_code}")
                     continue
                 
                 try:
@@ -185,19 +179,42 @@ class WeiboSpider:
                             'keyword': keyword  # 添加匹配的关键词
                         }
                         
-                        # 提取图片URL
-                        pics = weibo.get('pic_ids', [])
-                        if pics:
-                            weibo_data['image_urls'] = [
-                                f"https://wx1.sinaimg.cn/large/{pic_id}.jpg"
-                                for pic_id in pics
-                            ]
+                        # 检查是否包含视频
+                        has_video = False
+                        video_url = ''
+                        video_cover = ''
+                        
+                        # 检查page_info中的视频信息
+                        page_info = weibo.get('page_info', {})
+                        if page_info and page_info.get('type') == 'video':
+                            has_video = True
+                            media_info = page_info.get('media_info', {})
+                            video_url = media_info.get('mp4_720p_mp4', '') or media_info.get('mp4_hd_url', '') or media_info.get('mp4_sd_url', '')
+                            video_cover = page_info.get('page_pic', {}).get('url', '')
+                        
+                        # 检查混合媒体中的视频
+                        mix_media_info = weibo.get('mix_media_info', {})
+                        media_items = mix_media_info.get('items', [])
+                        for item in media_items:
+                            if item.get('type') == 'video':
+                                has_video = True
+                                media_info = item.get('data', {}).get('media_info', {})
+                                if not video_url:  # 如果之前没有找到视频URL
+                                    video_url = media_info.get('mp4_720p_mp4', '') or media_info.get('mp4_hd_url', '') or media_info.get('mp4_sd_url', '')
+                                if not video_cover:  # 如果之前没有找到封面图
+                                    video_cover = item.get('data', {}).get('thumb_pic', '')
+                        
+                        weibo_data['has_video'] = has_video
+                        weibo_data['video_url'] = video_url
+                        weibo_data['video_cover'] = video_cover
                         
                         # 检查是否已经爬取过这条微博
                         if weibo_data['weibo_id'] not in self.seen_weibos:
                             self.seen_weibos.add(weibo_data['weibo_id'])
                             results.append(weibo_data)
                             print(f"找到匹配关键词 '{keyword}' 的微博: {content[:50]}...")
+                            if has_video:
+                                print(f"该微博包含视频，封面图: {video_cover}")
                 
                 except json.JSONDecodeError:
                     print(f"解析JSON失败，页面 {page}")

@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import re
+import os
 import json
 import time
-import random
 import requests
-import os
+import re
+from datetime import datetime
+import random
 from lxml import etree
 from tqdm import tqdm
 from fake_useragent import UserAgent
@@ -269,7 +270,7 @@ class WeiboSpider:
                         # 获取微博文本内容
                         content = weibo.get('text_raw', '')
                         
-                        user_name = weibo.get('user_name', '')
+                        user_name = weibo.get('user', {}).get('screen_name', '')
 
                         # 检查是否包含关键词（不区分大小写）
                         if keyword.lower() not in content.lower():
@@ -282,6 +283,18 @@ class WeiboSpider:
                             continue
                         
                         self.seen_weibos.add(weibo_id)
+                        
+                        # 获取微博详细信息
+                        try:
+                            detail_url = f"https://weibo.com/ajax/statuses/show?id={weibo_id}"
+                            response = requests.get(detail_url, headers=self.headers, cookies=self.cookies, timeout=10)
+                            if response.status_code == 200:
+                                detail_data = response.json()
+                                if detail_data:
+                                    weibo = detail_data
+                                    print(f"成功获取微博详细信息: {weibo_id}")
+                        except Exception as e:
+                            print(f"获取微博详细信息时出错: {e}")
                         
                         # 提取图片URL
                         pic_ids = weibo.get('pic_ids', [])
@@ -308,8 +321,96 @@ class WeiboSpider:
                             'source': weibo.get('source', '未知来源'),
                             'keyword': keyword,
                             'image_urls': image_urls,
-                            'local_image_paths': local_paths if download_media else []
+                            'local_image_paths': local_paths if download_media else [],
+                            'video_url': '',  # 初始化视频URL
+                            'video_cover': ''  # 初始化视频封面URL
                         }
+
+                        # 检查是否包含视频
+                        page_info = weibo.get('page_info', {})
+                        if page_info and page_info.get('type') == 'video':
+                            media_info = page_info.get('media_info', {})
+                            # 尝试从urls字段获取视频链接
+                            urls = page_info.get('urls', {})
+                            if urls:
+                                weibo_data['video_url'] = urls.get('mp4_720p_mp4', '') or urls.get('mp4_hd_url', '') or urls.get('mp4_sd_url', '') or urls.get('stream_url', '')
+                            # 如果urls中没有，再尝试media_info
+                            if not weibo_data['video_url']:
+                                weibo_data['video_url'] = media_info.get('mp4_720p_mp4', '') or media_info.get('mp4_hd_url', '') or media_info.get('mp4_sd_url', '') or media_info.get('stream_url', '')
+                            # 如果还是没有，尝试play_url
+                            if not weibo_data['video_url']:
+                                weibo_data['video_url'] = page_info.get('play_url', '') or page_info.get('media_url', '') or page_info.get('url', '')
+                            weibo_data['video_cover'] = page_info.get('page_pic', {}).get('url', '') or page_info.get('page_pic', '')
+                            print(f"找到视频微博，视频链接: {weibo_data['video_url']}")
+
+                        # 检查mix_media_info中的视频
+                        mix_media_info = weibo.get('mix_media_info', {})
+                        if mix_media_info:
+                            media_items = mix_media_info.get('items', [])
+                            for item in media_items:
+                                if item.get('type') == 'video':
+                                    media_info = item.get('data', {}).get('media_info', {})
+                                    urls = item.get('data', {}).get('urls', {})
+                                    if not weibo_data['video_url']:  # 如果之前没有设置视频URL
+                                        if urls:
+                                            weibo_data['video_url'] = urls.get('mp4_720p_mp4', '') or urls.get('mp4_hd_url', '') or urls.get('mp4_sd_url', '') or urls.get('stream_url', '')
+                                        if not weibo_data['video_url']:
+                                            weibo_data['video_url'] = media_info.get('mp4_720p_mp4', '') or media_info.get('mp4_hd_url', '') or media_info.get('mp4_sd_url', '') or media_info.get('stream_url', '')
+                                        if not weibo_data['video_url']:
+                                            weibo_data['video_url'] = item.get('data', {}).get('play_url', '') or item.get('data', {}).get('media_url', '') or item.get('data', {}).get('url', '')
+                                    if not weibo_data['video_cover']:  # 如果之前没有设置封面URL
+                                        cover_url = item.get('data', {}).get('cover_image', {}).get('url', '') or item.get('data', {}).get('cover_image_url', '')
+                                        weibo_data['video_cover'] = cover_url
+                                    print(f"在mix_media_info中找到视频，视频链接: {weibo_data['video_url']}")
+                                    break  # 找到一个视频就足够了
+
+                        # 检查视频组件
+                        if weibo.get('retweeted_status', {}).get('page_info', {}).get('type') == 'video':
+                            page_info = weibo.get('retweeted_status', {}).get('page_info', {})
+                            media_info = page_info.get('media_info', {})
+                            urls = page_info.get('urls', {})
+                            if not weibo_data['video_url']:
+                                if urls:
+                                    weibo_data['video_url'] = urls.get('mp4_720p_mp4', '') or urls.get('mp4_hd_url', '') or urls.get('mp4_sd_url', '') or urls.get('stream_url', '')
+                                if not weibo_data['video_url']:
+                                    weibo_data['video_url'] = media_info.get('mp4_720p_mp4', '') or media_info.get('mp4_hd_url', '') or media_info.get('mp4_sd_url', '') or media_info.get('stream_url', '')
+                                if not weibo_data['video_url']:
+                                    weibo_data['video_url'] = page_info.get('play_url', '') or page_info.get('media_url', '') or page_info.get('url', '')
+                            if not weibo_data['video_cover']:
+                                weibo_data['video_cover'] = page_info.get('page_pic', {}).get('url', '') or page_info.get('page_pic', '')
+                            print(f"在转发内容中找到视频，视频链接: {weibo_data['video_url']}")
+
+                        # 检查短链接中的视频
+                        if not weibo_data['video_url']:
+                            content = weibo_data['content']
+                            short_urls = re.findall(r'http://t\.cn/[A-Za-z0-9]+', content)
+                            for short_url in short_urls:
+                                try:
+                                    # 获取短链接的详细信息
+                                    detail_url = f"https://weibo.com/ajax/statuses/show?id={weibo_id}"
+                                    response = requests.get(detail_url, headers=self.headers, cookies=self.cookies, timeout=10)
+                                    if response.status_code == 200:
+                                        detail_data = response.json()
+                                        if detail_data:
+                                            # 检查是否有视频信息
+                                            page_info = detail_data.get('page_info', {})
+                                            if page_info and page_info.get('type') == 'video':
+                                                media_info = page_info.get('media_info', {})
+                                                weibo_data['video_url'] = media_info.get('mp4_720p_mp4', '') or media_info.get('mp4_hd_url', '') or media_info.get('mp4_sd_url', '') or media_info.get('stream_url', '')
+                                                if not weibo_data['video_url']:
+                                                    weibo_data['video_url'] = page_info.get('play_url', '') or page_info.get('media_url', '') or page_info.get('url', '')
+                                                weibo_data['video_cover'] = page_info.get('page_pic', {}).get('url', '') or page_info.get('page_pic', '')
+                                                print(f"在短链接中找到视频，视频链接: {weibo_data['video_url']}")
+                                                break
+                                except Exception as e:
+                                    print(f"解析短链接时出错: {e}")
+                                    continue
+
+                        # 如果还是没有找到视频URL，但是有短链接，就用短链接作为视频URL
+                        if not weibo_data['video_url'] and short_urls:
+                            weibo_data['video_url'] = short_urls[0]
+                            weibo_data['video_cover'] = 'https://h5.sinaimg.cn/upload/100/1493/2020/05/09/timeline_card_small_video_default.png'
+                            print(f"使用短链接作为视频链接: {weibo_data['video_url']}")
                         
                         results.append(weibo_data)
                         print(f"找到匹配关键词 '{keyword}' 的微博: {content[:50]}...")

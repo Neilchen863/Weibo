@@ -210,12 +210,12 @@ def process_keyword(keyword, spider, ml_analyzer, config, now, keyword_to_type):
         keyword_type = keyword_to_type.get(keyword, "unknown")
         logging.info(f"关键词 '{keyword}' 的分类: {keyword_type}")
         
-        # 获取搜索结果 - 暂时关闭媒体下载
+        # 获取搜索结果 - 强制关闭媒体下载
         results = spider.search_keyword(
             keyword, 
             pages=config["default_pages"], 
             start_page=config["start_page"],
-            download_media=False  # 先不下载，等筛选后再下载
+            download_media=False  # 强制关闭媒体下载
         )
         
         if not results:
@@ -224,19 +224,18 @@ def process_keyword(keyword, spider, ml_analyzer, config, now, keyword_to_type):
         
         logging.info(f"获取到 {len(results)} 条微博")
         
-        # ====== 新增：筛选最近两天且有图片或有视频的微博 ======
+        # ====== 新增：筛选最近两天且有视频的微博 ======
         now_dt = datetime.now()
         two_days_ago = now_dt - timedelta(days=2)
         filtered_by_time_and_media = []
         for weibo in results:
             dt = parse_weibo_time(weibo.get('publish_time', ''), now=now_dt)
-            has_img = weibo.get('has_images', False)
             has_vid = weibo.get('has_videos', False)
-            if dt and dt >= two_days_ago and (has_img or has_vid):
+            if dt and dt >= two_days_ago and has_vid:
                 filtered_by_time_and_media.append(weibo)
-        logging.info(f"筛选后剩余 {len(filtered_by_time_and_media)} 条微博")
+        logging.info(f"筛选后剩余 {len(filtered_by_time_and_media)} 条视频微博")
         if not filtered_by_time_and_media:
-            logging.warning(f"最近两天没有关键词 '{keyword}' 的相关图片或视频微博")
+            logging.warning(f"最近两天没有关键词 '{keyword}' 的相关视频微博")
             return None
         # ====== 后续分析用 filtered_by_time_and_media 替换 results ======
         
@@ -261,17 +260,13 @@ def process_keyword(keyword, spider, ml_analyzer, config, now, keyword_to_type):
         for weibo in filtered_results:
             weibo['type'] = keyword_type
         
-        # 如果启用了媒体下载，为筛选后的微博下载图片
+        # 如果启用了媒体下载，为筛选后的微博下载图片 - 移除此功能
         if config["download_media"]:
-            logging.info(f"开始为 {keyword} 的高质量微博下载图片...")
-            downloaded_count = download_filtered_media(spider, filtered_results, keyword)
-            logging.info(f"为关键词 '{keyword}' 下载了 {downloaded_count} 张图片")
+            logging.info(f"媒体下载已禁用")
         
-        # 添加图片Base64数据到微博中
+        # 移除图片处理相关代码
         if config["download_media"]:
-            logging.info(f"正在处理图片数据...")
-            filtered_results = add_image_data_to_weibos(filtered_results)
-            logging.info(f"图片数据处理完成")
+            logging.info(f"图片处理已禁用")
         
         # 保存结果
         result_dir = "results"
@@ -358,7 +353,9 @@ def clean_and_reorder_dataframe(df):
             'comments_count',
             'attitudes_count',
             'post_link',
-            'content_score'  # 如果有的话
+            'content_score',  # 如果有的话
+            'video_url',      # 添加视频URL字段
+            'video_cover'     # 添加视频封面URL字段
         ]
         
         # 只保留实际存在的列，按照期望的顺序
