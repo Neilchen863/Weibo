@@ -15,6 +15,29 @@ import io
 import hashlib
 import requests
 
+# Load cookies if available
+def load_cookies():
+    try:
+        with open('config.json', 'r', encoding='utf-8') as f:
+            cfg = json.load(f)
+            cookie_str = cfg.get('cookie', '')
+            if cookie_str:
+                # Convert cookie string to dict
+                cookies = {}
+                for item in cookie_str.split(';'):
+                    if '=' in item:
+                        k, v = item.strip().split('=', 1)
+                        cookies[k.strip()] = v.strip()
+                print("成功加载cookie配置")
+                return cookies
+            else:
+                print("警告: config.json中未找到cookie配置")
+    except Exception as e:
+        print(f"加载cookie配置失败: {e}")
+    return {}
+
+COOKIES = load_cookies()
+
 def get_image_hash(image_path):
     """获取图片文件的哈希值用于去重"""
     try:
@@ -48,111 +71,93 @@ def image_to_base64(image_path, max_size=(400, 400)):
         print(f"转换图片失败 {image_path}: {e}")
         return None
 
-def create_simple_gallery():
+def create_simple_gallery(keyword_videos=None, html_filename=None):
     """创建简化版视频画廊"""
     try:
-        # 查找最新的结果文件
-        results_dir = "results"
-        if not os.path.exists(results_dir):
-            print("结果目录不存在")
-            return None
-        
-        # 查找最新的汇总CSV文件
-        csv_files = [f for f in os.listdir(results_dir) if f.endswith(".csv")]
-        if not csv_files:
-            print("未找到结果文件")
-            return None
-        
-        # 选择最新的文件
-        latest_csv = max(csv_files, key=lambda x: os.path.getmtime(os.path.join(results_dir, x)))
-        csv_path = os.path.join(results_dir, latest_csv)
-        
-        print(f"读取结果文件: {csv_path}")
-        
-        # 读取CSV数据
-        try:
-            df = pd.read_csv(csv_path, encoding='utf-8-sig')
-        except:
-            df = pd.read_csv(csv_path, encoding='utf-8')
-        
-        if df.empty:
-            print("CSV文件为空")
-            return None
+        if keyword_videos is None:
+            # 查找最新的结果文件
+            results_dir = "results"
+            if not os.path.exists(results_dir):
+                print("结果目录不存在")
+                return None
             
-        # 修复列名中的换行符
-        df.columns = [col.strip().replace('\n', '') for col in df.columns]
-        
-        # 确保video_url列是字符串类型
-        df['video_url'] = df['video_url'].fillna('').astype(str)
-        df['video_cover'] = df['video_cover'].fillna('').astype(str)
-        
-        # 只保留有视频的微博（通过检查video_url字段）
-        df = df[df['video_url'].str.strip() != ''].copy()
-        if df.empty:
-            print("没有找到包含视频的微博")
-            return None
-        
-        # 全局视频预览图哈希集合，用于去重
-        global_video_hashes = set()
-        
-        # 按关键词分组处理视频
-        keyword_videos = {}
-        total_videos = 0
-        unique_videos = 0
-        
-        for keyword in df['keyword'].unique():
-            print(f"处理关键词: {keyword}")
-            keyword_data = df[df['keyword'] == keyword]
-            keyword_videos[keyword] = []
+            # 查找最新的汇总CSV文件
+            csv_files = [f for f in os.listdir(results_dir) if f.endswith(".csv")]
+            if not csv_files:
+                print("未找到结果文件")
+                return None
             
-            for _, row in keyword_data.iterrows():
-                weibo_id = str(row.get('weibo_id', ''))
-                content = str(row.get('content', ''))[:100] + "..." if len(str(row.get('content', ''))) > 100 else str(row.get('content', ''))
-                video_url = str(row.get('video_url', ''))
-                video_cover = str(row.get('video_cover', ''))
+            # 选择最新的文件
+            latest_csv = max(csv_files, key=lambda x: os.path.getmtime(os.path.join(results_dir, x)))
+            csv_path = os.path.join(results_dir, latest_csv)
+            
+            print(f"读取结果文件: {csv_path}")
+            
+            # 读取CSV数据
+            try:
+                df = pd.read_csv(csv_path, encoding='utf-8-sig')
+            except:
+                df = pd.read_csv(csv_path, encoding='utf-8')
+            
+            if df.empty:
+                print("CSV文件为空")
+                return None
                 
-                if not video_url or video_url == 'nan':
-                    video_url = f"https://weibo.com/detail/{weibo_id}"
-                
-                if not video_cover or video_cover == 'nan':
-                    # 使用默认的视频封面图
-                    video_cover = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+CiAgPHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiM0NDQ0NDQiLz4KICA8Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSIzMCIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjgiLz4KICA8cG9seWdvbiBwb2ludHM9IjQwLDM1IDY1LDUwIDQwLDY1IiBmaWxsPSIjNDQ0NDQ0Ii8+Cjwvc3ZnPg=="
-                else:
-                    try:
-                        # 下载视频预览图
-                        response = requests.get(video_cover, timeout=10)
-                        if response.status_code == 200:
-                            # 转换预览图为Base64
-                            base64_string = base64.b64encode(response.content).decode('utf-8')
-                            video_cover = f"data:image/jpeg;base64,{base64_string}"
-                    except Exception as e:
-                        print(f"下载视频预览图失败 {weibo_id}: {e}")
-                        # 使用默认的视频封面图
-                        video_cover = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+CiAgPHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiM0NDQ0NDQiLz4KICA8Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSIzMCIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjgiLz4KICA8cG9seWdvbiBwb2ludHM9IjQwLDM1IDY1LDUwIDQwLDY1IiBmaWxsPSIjNDQ0NDQ0Ii8+Cjwvc3ZnPg=="
-                
-                # 生成唯一标识
-                video_hash = hashlib.md5(f"{weibo_id}_{content}".encode()).hexdigest()
-                total_videos += 1
-                
-                # 只处理唯一视频
-                if video_hash not in global_video_hashes:
-                    global_video_hashes.add(video_hash)
-                    unique_videos += 1
+            # 修复列名中的换行符
+            df.columns = [col.strip().replace('\n', '') for col in df.columns]
+            
+            # 确保必要的列是字符串类型
+            df['video_url'] = df['video_url'].fillna('').astype(str)
+            df['content'] = df['content'].fillna('').astype(str)
+            
+            # 去除多余的空格和换行符
+            df['video_url'] = df['video_url'].str.replace('\n', '').str.replace('\r', '').str.strip()
+            df['content'] = df['content'].str.replace('\n', ' ').str.replace('\r', ' ').str.strip()
+            
+            # 只保留有视频的微博
+            df = df[df['video_url'].str.strip() != ''].copy()
+            if df.empty:
+                print("没有找到包含视频的微博")
+                return None
+            
+            # 按关键词分组处理视频
+            keyword_videos = {}
+            for keyword in df['keyword'].unique():
+                keyword_data = df[df['keyword'] == keyword]
+                videos = []
+                for _, row in keyword_data.iterrows():
+                    weibo_id = str(row.get('weibo_id', ''))
+                    content = row['content']
+                    # 如果内容太长，截断并添加省略号
+                    if len(content) > 100:
+                        content = content[:100] + "..."
                     
-                    keyword_videos[keyword].append({
-                        'base64': video_cover,
+                    # 始终使用微博原帖链接
+                    video_url = f"https://weibo.com/detail/{weibo_id}"
+                    
+                    videos.append({
                         'content': content,
-                        'weibo_id': weibo_id,
-                        'video_url': video_url
+                        'video_url': video_url,
+                        'weibo_id': weibo_id
                     })
-                    print(f"处理视频成功: {weibo_id}")
+                
+                if videos:  # 只添加有视频的关键词
+                    keyword_videos[keyword] = videos
         
-        # 生成HTML
-        now = datetime.now().strftime("%Y%m%d_%H%M%S")
-        html_filename = f"video_gallery_{now}.html"
+        if html_filename is None:
+            # 如果没有提供输出文件名，生成一个默认的
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            html_filename = f'results/gallery_{timestamp}.html'
         
-        html_content = f"""
-<!DOCTYPE html>
+        # 确保输出目录存在
+        os.makedirs(os.path.dirname(html_filename), exist_ok=True)
+        
+        # 统计视频数量
+        total_videos = sum(len(videos) for videos in keyword_videos.values())
+        unique_videos = len(set(video['video_url'] for videos in keyword_videos.values() for video in videos))
+        
+        # 生成HTML内容
+        html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -254,6 +259,8 @@ def create_simple_gallery():
             transition: transform 0.3s ease, box-shadow 0.3s ease;
             position: relative;
             cursor: pointer;
+            display: flex;
+            flex-direction: column;
         }}
         
         .video-card:hover {{
@@ -261,53 +268,44 @@ def create_simple_gallery():
             box-shadow: 0 20px 40px rgba(0,0,0,0.15);
         }}
         
-        .video-preview {{
-            position: relative;
-            width: 100%;
-            height: 250px;
-            overflow: hidden;
-        }}
-        
-        .video-preview img {{
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }}
-        
-        .play-button {{
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 60px;
-            height: 60px;
-            background: rgba(0, 0, 0, 0.7);
-            border-radius: 50%;
+        .video-content-wrapper {{
+            flex: 1;
+            padding: 20px;
             display: flex;
-            justify-content: center;
-            align-items: center;
-            transition: background 0.3s ease;
-        }}
-        
-        .play-button::after {{
-            content: '';
-            width: 0;
-            height: 0;
-            border-style: solid;
-            border-width: 10px 0 10px 20px;
-            border-color: transparent transparent transparent white;
-            margin-left: 5px;
-        }}
-        
-        .video-info {{
-            padding: 15px;
+            flex-direction: column;
+            position: relative;
         }}
         
         .video-content {{
-            font-size: 0.9em;
-            color: #666;
-            line-height: 1.5;
-            margin-bottom: 10px;
+            font-size: 1.1em;
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            flex: 1;
+        }}
+        
+        .video-play-button {{
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 500;
+            margin-top: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }}
+        
+        .video-play-button:hover {{
+            opacity: 0.9;
+        }}
+        
+        .video-play-button svg {{
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
         }}
         
         .footer {{
@@ -329,6 +327,10 @@ def create_simple_gallery():
                 flex-direction: column;
                 gap: 10px;
                 text-align: center;
+            }}
+            
+            .video-content {{
+                font-size: 1em;
             }}
         }}
     </style>
@@ -378,12 +380,14 @@ def create_simple_gallery():
             for video_data in videos:
                 html_content += f"""
                     <div class="video-card" onclick="window.open('{video_data['video_url']}', '_blank')">
-                        <div class="video-preview">
-                            <img src="{video_data['base64']}" alt="视频预览">
-                            <div class="play-button"></div>
-                        </div>
-                        <div class="video-info">
+                        <div class="video-content-wrapper">
                             <div class="video-content">{video_data['content']}</div>
+                            <div class="video-play-button">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M8 5v14l11-7z"/>
+                                </svg>
+                                在微博查看视频
+                            </div>
                         </div>
                     </div>
 """
