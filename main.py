@@ -370,9 +370,25 @@ def clean_and_reorder_dataframe(df):
 def read_keywords(file_path):
     """读取关键词列表文件"""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            # 过滤掉空行
-            return [line.strip() for line in f if line.strip()]
+        # 如果文件路径是 "keywords.txt"，改为从 "keyword and classification.txt" 中读取
+        if file_path == 'keywords.txt':
+            classification_file = "keyword and classification.txt"
+            if os.path.exists(classification_file):
+                df = pd.read_csv(classification_file, encoding='utf-8')
+                # 从第一列（关键词列）提取关键词
+                if '关键词' in df.columns:
+                    return df['关键词'].dropna().tolist()
+                else:
+                    # 如果没有列名，就假设第一列是关键词
+                    return df.iloc[:, 0].dropna().tolist()
+            else:
+                print(f"文件 {classification_file} 不存在")
+                return []
+        else:
+            # 原始的从文本文件读取方式
+            with open(file_path, 'r', encoding='utf-8') as f:
+                # 过滤掉空行
+                return [line.strip() for line in f if line.strip()]
     except Exception as e:
         print(f"读取{file_path}失败: {str(e)}")
         return []
@@ -398,6 +414,10 @@ def main():
         return
 
     logging.info(f"从keywords.txt中读取到 {len(keywords)} 个关键词")
+
+    # 读取关键词分类
+    keyword_to_type = load_keyword_classifications()
+    logging.info(f"加载了 {len(keyword_to_type)} 个关键词分类信息")
 
     # 读取用户URL列表
     user_urls = read_user_urls('user_urls.txt')
@@ -460,8 +480,18 @@ def main():
             # 清理和重新排序DataFrame
             df_all = clean_and_reorder_dataframe(df_all)
             
-            # 按点赞量降序排序
-            df_all = df_all.sort_values(by='attitudes_count', ascending=False)
+            # 添加分类信息
+            df_all['keyword_type'] = df_all['keyword'].map(keyword_to_type).fillna('other')
+            
+            # 先按关键词分类排序（show类别优先），然后按点赞量降序排序
+            df_all['is_show'] = (df_all['keyword_type'] == 'show').astype(int)
+            df_all = df_all.sort_values(by=['is_show', 'attitudes_count'], ascending=[False, False])
+            
+            # 删除辅助排序列
+            if 'is_show' in df_all.columns:
+                df_all = df_all.drop(columns=['is_show'])
+            if 'keyword_type' in df_all.columns:
+                df_all = df_all.drop(columns=['keyword_type'])
             
             # 保存为CSV
             output_file = os.path.join(result_dir, f"all_results_{now}.csv")

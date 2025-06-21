@@ -5,7 +5,7 @@
     "min_likes": 1000,
     "min_comments": 50,
     "min_forwards": 20,
-    "download_media": true,
+    "download_media": false,
     "max_retries": 3,
     "retry_delay": 5,
     "thread_pool_size": 4,

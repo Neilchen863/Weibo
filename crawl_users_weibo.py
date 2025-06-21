@@ -9,9 +9,26 @@ import os
 def read_keywords(file_path):
     """读取关键词列表文件"""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            # 过滤掉空行
-            return [line.strip() for line in f if line.strip()]
+        # 如果文件路径是 "keywords.txt"，改为从 "keyword and classification.txt" 中读取
+        if file_path == 'keywords.txt':
+            classification_file = "keyword and classification.txt"
+            if os.path.exists(classification_file):
+                import pandas as pd
+                df = pd.read_csv(classification_file, encoding='utf-8')
+                # 从第一列（关键词列）提取关键词
+                if '关键词' in df.columns:
+                    return df['关键词'].dropna().tolist()
+                else:
+                    # 如果没有列名，就假设第一列是关键词
+                    return df.iloc[:, 0].dropna().tolist()
+            else:
+                print(f"文件 {classification_file} 不存在")
+                return []
+        else:
+            # 原始的从文本文件读取方式
+            with open(file_path, 'r', encoding='utf-8') as f:
+                # 过滤掉空行
+                return [line.strip() for line in f if line.strip()]
     except Exception as e:
         print(f"读取{file_path}失败: {str(e)}")
         return []
