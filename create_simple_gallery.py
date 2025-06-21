@@ -71,6 +71,13 @@ def image_to_base64(image_path, max_size=(400, 400)):
         print(f"转换图片失败 {image_path}: {e}")
         return None
 
+def has_video(row):
+    """检查是否包含视频"""
+    # Check video_url field
+    if pd.notna(row['video_url']) and row['video_url'].strip() != '' and 'http' in row['video_url']:
+        return True
+    return False
+
 def create_simple_gallery(keyword_videos=None, html_filename=None):
     """创建简化版视频画廊"""
     try:
@@ -109,23 +116,18 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
             # 确保必要的列是字符串类型
             df['video_url'] = df['video_url'].fillna('').astype(str)
             df['content'] = df['content'].fillna('').astype(str)
-            df['video_cover'] = df['video_cover'].fillna('').astype(str)
+            if 'video_cover' in df.columns:
+                df['video_cover'] = df['video_cover'].fillna('').astype(str)
             
             # 去除多余的空格和换行符
             df['video_url'] = df['video_url'].str.replace('\n', '').str.replace('\r', '').str.strip()
             df['content'] = df['content'].str.replace('\n', ' ').str.replace('\r', ' ').str.strip()
-            df['video_cover'] = df['video_cover'].str.replace('\n', '').str.replace('\r', '').str.strip()
+            if 'video_cover' in df.columns:
+                df['video_cover'] = df['video_cover'].str.replace('\n', '').str.replace('\r', '').str.strip()
             
-            # 更严格地筛选有视频的微博
-            df = df[
-                (df['video_url'].str.strip() != '') & 
-                (df['video_url'].str.strip() != 'nan') & 
-                (df['video_url'].str.strip() != 'None') &
-                (df['video_url'].str.contains('http')) &  # 确保链接是以http开头
-                (df['video_cover'].str.strip() != '') &   # 确保有视频封面
-                (df['video_cover'].str.strip() != 'nan') &
-                (df['video_cover'].str.strip() != 'None')
-            ].copy()
+            # 使用与main.py相同的筛选逻辑
+            df['has_video'] = df.apply(has_video, axis=1)
+            df = df[df['has_video'] == True].copy()
             
             if df.empty:
                 print("没有找到包含视频的微博")

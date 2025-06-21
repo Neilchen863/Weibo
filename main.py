@@ -328,44 +328,33 @@ def load_keyword_classifications():
     return keyword_to_type
 
 def clean_and_reorder_dataframe(df):
-    """清理和重新排序DataFrame"""
-    try:
-        # 移除不需要的列
-        columns_to_drop = ['user_id', 'image_urls', 'local_image_paths', 'source']
-        df = df.drop(columns=[col for col in columns_to_drop if col in df.columns])
-        
-        # 确保有post_link列
-        if 'post_link' not in df.columns and 'weibo_id' in df.columns:
-            df['post_link'] = df['weibo_id'].apply(lambda x: f"https://weibo.com/detail/{x}")
-        
-        # 清理content列中的换行符
-        if 'content' in df.columns:
-            df['content'] = df['content'].apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip())
-        
-        # 定义列的顺序，keyword放在第一列
-        desired_columns = [
-            'keyword',  # 放在第一位
-            'user_name',
-            'weibo_id',
-            'content',
-            'publish_time',
-            'reposts_count',
-            'comments_count',
-            'attitudes_count',
-            'post_link',
-            'content_score',  # 如果有的话
-            'video_url',      # 添加视频URL字段
-            'video_cover'     # 添加视频封面URL字段
-        ]
-        
-        # 只保留实际存在的列，按照期望的顺序
-        existing_columns = [col for col in desired_columns if col in df.columns]
-        df = df[existing_columns]
-        
-        return df
-    except Exception as e:
-        logging.error(f"清理DataFrame时出错: {e}")
-        return df
+    """清理并重新排序DataFrame"""
+    # 确保所有必要的列都存在
+    required_columns = ['weibo_id', 'content', 'publish_time', 'reposts_count', 'comments_count', 
+                        'attitudes_count', 'post_link', 'video_url', 'video_cover']
+    
+    # 添加空列，如果不存在
+    for col in required_columns:
+        if col not in df.columns:
+            df[col] = ''
+    
+    # 删除用户名字段
+    if 'user_name' in df.columns:
+        df = df.drop(columns=['user_name'])
+    
+    # 重新排序列，优先显示重要信息
+    ordered_columns = ['keyword'] + required_columns
+    
+    # 只保留在ordered_columns中的列
+    existing_columns = [col for col in ordered_columns if col in df.columns]
+    
+    # 如果有其他额外的列，也保留
+    extra_columns = [col for col in df.columns if col not in ordered_columns]
+    
+    # 合并列顺序
+    final_columns = existing_columns + extra_columns
+    
+    return df[final_columns]
 
 def read_keywords(file_path):
     """读取关键词列表文件"""
@@ -402,6 +391,17 @@ def read_user_urls(file_path):
     except Exception as e:
         print(f"读取{file_path}失败: {str(e)}")
         return []
+
+def has_video(row):
+    # Check video_url field
+    if pd.notna(row['video_url']) and row['video_url'].strip() != '':
+        return True
+    return False
+
+def process_weibo_data(df):
+    # Add has_video column and filter
+    df['has_video'] = df.apply(has_video, axis=1)
+    return df[df['has_video'] == True].drop('has_video', axis=1)
 
 def main():
     # 加载配置
@@ -493,11 +493,14 @@ def main():
             if 'keyword_type' in df_all.columns:
                 df_all = df_all.drop(columns=['keyword_type'])
             
+            # 过滤只保留包含视频的微博
+            df_all = process_weibo_data(df_all)
+            
             # 保存为CSV
             output_file = os.path.join(result_dir, f"all_results_{now}.csv")
             df_all.to_csv(output_file, index=False, encoding='utf-8-sig')
-            logging.info(f"\n已保存所有结果到: {output_file}")
-            logging.info(f"总共获取到 {len(all_results)} 条微博")
+            logging.info(f"\n已保存所有包含视频的微博到: {output_file}")
+            logging.info(f"总共获取到 {len(df_all)} 条包含视频的微博")
 
             # 自动生成图片画廊
             try:
