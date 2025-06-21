@@ -109,16 +109,29 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
             # 确保必要的列是字符串类型
             df['video_url'] = df['video_url'].fillna('').astype(str)
             df['content'] = df['content'].fillna('').astype(str)
+            df['video_cover'] = df['video_cover'].fillna('').astype(str)
             
             # 去除多余的空格和换行符
             df['video_url'] = df['video_url'].str.replace('\n', '').str.replace('\r', '').str.strip()
             df['content'] = df['content'].str.replace('\n', ' ').str.replace('\r', ' ').str.strip()
+            df['video_cover'] = df['video_cover'].str.replace('\n', '').str.replace('\r', '').str.strip()
             
-            # 只保留有视频的微博
-            df = df[df['video_url'].str.strip() != ''].copy()
+            # 更严格地筛选有视频的微博
+            df = df[
+                (df['video_url'].str.strip() != '') & 
+                (df['video_url'].str.strip() != 'nan') & 
+                (df['video_url'].str.strip() != 'None') &
+                (df['video_url'].str.contains('http')) &  # 确保链接是以http开头
+                (df['video_cover'].str.strip() != '') &   # 确保有视频封面
+                (df['video_cover'].str.strip() != 'nan') &
+                (df['video_cover'].str.strip() != 'None')
+            ].copy()
+            
             if df.empty:
                 print("没有找到包含视频的微博")
                 return None
+            
+            print(f"找到 {len(df)} 条包含视频的微博")
             
             # 按关键词分组处理视频
             keyword_videos = {}
@@ -143,6 +156,7 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
                 
                 if videos:  # 只添加有视频的关键词
                     keyword_videos[keyword] = videos
+                    print(f"关键词 '{keyword}' 包含 {len(videos)} 个视频")
         
         if html_filename is None:
             # 如果没有提供输出文件名，生成一个默认的
