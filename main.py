@@ -342,6 +342,28 @@ def clean_and_reorder_dataframe(df):
     if 'user_name' in df.columns:
         df = df.drop(columns=['user_name'])
     
+    # 确保post_link列非空，如果为空则使用weibo_id生成
+    if 'weibo_id' in df.columns:
+        mask = (df['post_link'].isna()) | (df['post_link'] == '')
+        df.loc[mask, 'post_link'] = df.loc[mask, 'weibo_id'].apply(
+            lambda x: f'https://weibo.com/detail/{x}'
+        )
+    
+    # 清理content，保留纯文本
+    if 'content' in df.columns:
+        # 移除HTML标签
+        df['content'] = df['content'].astype(str).replace(r'<[^>]*>', '', regex=True)
+        # 移除微博特殊标记如[表情]
+        df['content'] = df['content'].replace(r'\[.*?\]', '', regex=True)
+        # 移除链接
+        df['content'] = df['content'].replace(r'http[s]?://\S+', '', regex=True)
+        # 移除多余空格和换行
+        df['content'] = df['content'].replace(r'\s+', ' ', regex=True).str.strip()
+        # 移除特殊Unicode字符
+        df['content'] = df['content'].replace(r'[\u200b-\u200f\u2028-\u202f\u205f-\u206f]', '', regex=True)
+        # 移除"​​​"结尾（这是微博文本常见的结尾）
+        df['content'] = df['content'].replace(r'​+$', '', regex=True)
+    
     # 重新排序列，优先显示重要信息
     ordered_columns = ['keyword'] + required_columns
     
