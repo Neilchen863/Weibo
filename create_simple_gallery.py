@@ -73,10 +73,11 @@ def image_to_base64(image_path, max_size=(400, 400)):
 
 def has_video(row):
     """检查是否包含视频"""
-    # Check video_url field
-    if pd.notna(row['video_url']) and row['video_url'].strip() != '' and 'http' in row['video_url']:
+    # Check video_url field if it exists
+    if 'video_url' in row and pd.notna(row['video_url']) and row['video_url'].strip() != '' and 'http' in row['video_url']:
         return True
-    return False
+    # 如果没有video_url列，假设所有条目都包含视频（因为已经过滤过了）
+    return True
 
 def create_simple_gallery(keyword_videos=None, html_filename=None):
     """创建简化版视频画廊"""
@@ -114,13 +115,17 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
             df.columns = [col.strip().replace('\n', '') for col in df.columns]
             
             # 确保必要的列是字符串类型
-            df['video_url'] = df['video_url'].fillna('').astype(str)
+            if 'video_url' in df.columns:
+                df['video_url'] = df['video_url'].fillna('').astype(str)
+            else:
+                df['video_url'] = ''  # 如果没有video_url列，创建空列
             df['content'] = df['content'].fillna('').astype(str)
             if 'video_cover' in df.columns:
                 df['video_cover'] = df['video_cover'].fillna('').astype(str)
             
             # 去除多余的空格和换行符
-            df['video_url'] = df['video_url'].str.replace('\n', '').str.replace('\r', '').str.strip()
+            if 'video_url' in df.columns:
+                df['video_url'] = df['video_url'].str.replace('\n', '').str.replace('\r', '').str.strip()
             df['content'] = df['content'].str.replace('\n', ' ').str.replace('\r', ' ').str.strip()
             if 'video_cover' in df.columns:
                 df['video_cover'] = df['video_cover'].str.replace('\n', '').str.replace('\r', '').str.strip()

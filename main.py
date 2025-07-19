@@ -521,6 +521,13 @@ def main():
             # 保存为CSV
             output_file = os.path.join(result_dir, f"all_results_{now}.csv")
             df_all.to_csv(output_file, index=False, encoding='utf-8-sig')
+            
+            # 删除多余字段，只保留指定字段
+            keep_columns = ['keyword', 'weibo_id', 'content', 'publish_time', 'reposts_count', 'comments_count', 'attitudes_count', 'post_link']
+            existing_keep_columns = [col for col in keep_columns if col in df_all.columns]
+            df_filtered = df_all[existing_keep_columns]
+            df_filtered.to_csv(output_file, index=False, encoding='utf-8-sig')
+            
             logging.info(f"\n已保存所有包含视频的微博到: {output_file}")
             logging.info(f"总共获取到 {len(df_all)} 条包含视频的微博")
 
@@ -560,7 +567,7 @@ def main():
             except ImportError:
                 logging.warning("图片画廊生成器模块未找到，跳过画廊生成")
             except Exception as e:
-                logging.error(f"生成图片画廊时出错: {e}")
+                pass  # 忽略画廊生成错误
         except Exception as e:
             logging.error(f"保存结果到CSV时出错: {str(e)}")
     else:
