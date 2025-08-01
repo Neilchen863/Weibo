@@ -224,25 +224,24 @@ def process_keyword(keyword, spider, ml_analyzer, config, now, keyword_to_type):
         
         logging.info(f"获取到 {len(results)} 条微博")
         
-        # ====== 新增：筛选最近两天且有视频的微博 ======
+        # ====== 筛选最近两天的微博（不再强制要求视频） ======
         now_dt = datetime.now()
         two_days_ago = now_dt - timedelta(days=2)
-        filtered_by_time_and_media = []
+        filtered_by_time = []
         for weibo in results:
             dt = parse_weibo_time(weibo.get('publish_time', ''), now=now_dt)
-            has_vid = weibo.get('has_videos', False)
-            if dt and dt >= two_days_ago and has_vid:
-                filtered_by_time_and_media.append(weibo)
-        logging.info(f"筛选后剩余 {len(filtered_by_time_and_media)} 条视频微博")
-        if not filtered_by_time_and_media:
-            logging.warning(f"最近两天没有关键词 '{keyword}' 的相关视频微博")
+            if dt and dt >= two_days_ago:
+                filtered_by_time.append(weibo)
+        logging.info(f"筛选后剩余 {len(filtered_by_time)} 条最近两天的微博")
+        if not filtered_by_time:
+            logging.warning(f"最近两天没有关键词 '{keyword}' 的相关微博")
             return None
-        # ====== 后续分析用 filtered_by_time_and_media 替换 results ======
+        # ====== 后续分析用 filtered_by_time 替换 results ======
         
         # 应用机器学习分析
         logging.info("正在进行机器学习分析...")
         analysis_result = ml_analyzer.analyze_weibos(
-            filtered_by_time_and_media, 
+            filtered_by_time, 
             min_score=config["min_score"],
             min_likes=config["min_likes"],  # 传递最低点赞数参数
             min_comments=config["min_comments"] if "min_comments" in config else 0,
@@ -515,8 +514,7 @@ def main():
             if 'keyword_type' in df_all.columns:
                 df_all = df_all.drop(columns=['keyword_type'])
             
-            # 过滤只保留包含视频的微博
-            df_all = process_weibo_data(df_all)
+            # 不再过滤视频，保留所有微博
             
             # 保存为CSV
             output_file = os.path.join(result_dir, f"all_results_{now}.csv")
@@ -528,8 +526,8 @@ def main():
             df_filtered = df_all[existing_keep_columns]
             df_filtered.to_csv(output_file, index=False, encoding='utf-8-sig')
             
-            logging.info(f"\n已保存所有包含视频的微博到: {output_file}")
-            logging.info(f"总共获取到 {len(df_all)} 条包含视频的微博")
+            logging.info(f"\n已保存所有微博到: {output_file}")
+            logging.info(f"总共获取到 {len(df_all)} 条微博")
 
             # 自动生成图片画廊
             try:

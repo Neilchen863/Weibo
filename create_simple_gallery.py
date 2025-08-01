@@ -130,15 +130,8 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
             if 'video_cover' in df.columns:
                 df['video_cover'] = df['video_cover'].str.replace('\n', '').str.replace('\r', '').str.strip()
             
-            # 使用与main.py相同的筛选逻辑
-            df['has_video'] = df.apply(has_video, axis=1)
-            df = df[df['has_video'] == True].copy()
-            
-            if df.empty:
-                print("没有找到包含视频的微博")
-                return None
-            
-            print(f"找到 {len(df)} 条包含视频的微博")
+            # 不再筛选视频，处理所有微博
+            print(f"找到 {len(df)} 条微博")
             
             # 按关键词分组处理视频
             keyword_videos = {}
@@ -161,9 +154,9 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
                         'weibo_id': weibo_id
                     })
                 
-                if videos:  # 只添加有视频的关键词
+                if videos:  # 只添加有内容的关键词
                     keyword_videos[keyword] = videos
-                    print(f"关键词 '{keyword}' 包含 {len(videos)} 个视频")
+                    print(f"关键词 '{keyword}' 包含 {len(videos)} 条微博")
         
         if html_filename is None:
             # 如果没有提供输出文件名，生成一个默认的
@@ -183,7 +176,7 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>微博视频画廊 - {datetime.now().strftime("%Y-%m-%d")}</title>
+    <title>微博内容画廊 - {datetime.now().strftime("%Y-%m-%d")}</title>
     <style>
         * {{
             margin: 0;
@@ -359,7 +352,7 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎬 微博视频画廊</h1>
+            <h1>📱 微博内容画廊</h1>
             <div class="stats">
                 <div class="stat-item">
                     <span class="stat-number">{len([k for k in keyword_videos.keys() if keyword_videos[k]])}</span>
@@ -367,7 +360,7 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
                 </div>
                 <div class="stat-item">
                     <span class="stat-number">{unique_videos}</span>
-                    唯一视频
+                    唯一微博
                 </div>
                 <div class="stat-item">
                     <span class="stat-number">{total_videos - unique_videos}</span>
@@ -391,8 +384,8 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
             html_content += f"""
             <div class="keyword-section">
                 <div class="keyword-title">
-                    <span>🎥 {keyword}</span>
-                    <span class="keyword-stats">{len(videos)} 个视频</span>
+                    <span>📝 {keyword}</span>
+                    <span class="keyword-stats">{len(videos)} 条微博</span>
                 </div>
                 
                 <div class="video-grid">
@@ -407,7 +400,7 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
                                 <svg viewBox="0 0 24 24">
                                     <path d="M8 5v14l11-7z"/>
                                 </svg>
-                                在微博查看视频
+                                查看微博详情
                             </div>
                         </div>
                     </div>
@@ -424,7 +417,7 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
         
         <div class="footer">
             <p>🎯 生成时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
-            <p>📊 已智能去重，仅显示唯一视频</p>
+            <p>📊 已智能去重，仅显示唯一微博</p>
         </div>
     </div>
 </body>
@@ -435,8 +428,8 @@ def create_simple_gallery(keyword_videos=None, html_filename=None):
         with open(html_filename, 'w', encoding='utf-8') as f:
             f.write(html_content)
         
-        print(f"视频画廊已保存到: {html_filename}")
-        print(f"去重统计: 总计 {total_videos} 个视频，保留 {unique_videos} 个唯一视频，删除 {total_videos - unique_videos} 个重复视频")
+        print(f"微博画廊已保存到: {html_filename}")
+        print(f"去重统计: 总计 {total_videos} 条微博，保留 {unique_videos} 条唯一微博，删除 {total_videos - unique_videos} 条重复微博")
         
         return html_filename
         
