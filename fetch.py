@@ -19,12 +19,18 @@ class WeiboSpider:
         self.ua = UserAgent()
         self.base_url = "https://s.weibo.com/weibo"
         self.headers = {
-            "User-Agent": self.ua.random,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
             "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-            "Cache-Control": "max-age=0",
+            "Referer": "https://weibo.com/",
+            "X-Requested-With": "XMLHttpRequest",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
         }
         
         # 从config.json读取配置
@@ -48,11 +54,12 @@ class WeiboSpider:
     
     def _get_random_delay(self):
         """生成随机延迟，避免被检测为爬虫"""
-        return random.uniform(1, 3)
+        return random.uniform(2, 5)
     
     def _update_headers(self):
         """更新请求头，防止被检测"""
-        self.headers["User-Agent"] = self.ua.random
+        # 固定使用Chrome UA，不随机更换
+        pass
     
     def download_media(self, url, media_type, keyword, weibo_id):
         """
@@ -250,12 +257,20 @@ class WeiboSpider:
                     search_url, 
                     headers=self.headers, 
                     cookies=self.cookies, 
-                    timeout=10
+                    timeout=15,
+                    allow_redirects=True
                 )
                 
                 # 检查响应状态
-                if response.status_code != 200:
+                if response.status_code == 403:
+                    print(f"请求被拒绝(403)，可能cookie已过期或被封，等待更长时间后重试...")
+                    time.sleep(10)
+                    continue
+                elif response.status_code != 200:
                     print(f"请求失败，状态码: {response.status_code}")
+                    if response.status_code == 429:
+                        print("请求过于频繁，等待更长时间...")
+                        time.sleep(30)
                     continue
                 
                 try:
