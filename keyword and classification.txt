@@ -60,7 +60,7 @@ cut,other
 热度飙升,other
 顶流,other
 流量,other
-刘宇宁,other
-迪丽热巴,other
-张凌赫,other
-赵露思,other
+刘宇宁,actor
+迪丽热巴,actor
+张凌赫,actor
+赵露思,actor

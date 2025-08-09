@@ -39,7 +39,10 @@ def load_config():
         "max_retries": 3,
         "retry_delay": 5,
         "thread_pool_size": 4,
-        "proxy": None
+        "proxy": None,
+        # 是否按自然日过滤最近N天（默认2天=今天+昨天）
+        "enable_time_filter": True,
+        "filter_recent_calendar_days": 2
     }
     
     try:
@@ -197,9 +200,26 @@ def parse_weibo_time(time_str, now=None):
                 return datetime.strptime(t, '%Y-%m-%d %H:%M')
             elif len(time_str) == 16:  # '2024-05-23 12:34'
                 return datetime.strptime(time_str, '%Y-%m-%d %H:%M')
+        else:
+            # 兼容微博 created_at 英文格式，如 'Thu Aug 07 16:59:47 +0800 2025'
+            # 尝试解析为含时区的时间并转换为本地无时区时间
+            try:
+                dt_aware = datetime.strptime(time_str, '%a %b %d %H:%M:%S %z %Y')
+                local_tz = datetime.now().astimezone().tzinfo
+                dt_local = dt_aware.astimezone(local_tz)
+                return dt_local.replace(tzinfo=None)
+            except Exception:
+                pass
     except Exception:
         pass
     return None
+
+def is_within_recent_calendar_days(dt_obj, now, days):
+    """判断给定时间是否在最近 days 个自然日内（包含今天）。"""
+    if dt_obj is None:
+        return False
+    start_date = (now.date() - timedelta(days=days - 1))
+    return start_date <= dt_obj.date() <= now.date()
 
 def process_keyword(keyword, spider, ml_analyzer, config, now, keyword_to_type):
     """处理单个关键词的爬取和分析"""
@@ -500,6 +520,16 @@ def main():
             
             # 清理和重新排序DataFrame
             df_all = clean_and_reorder_dataframe(df_all)
+
+            # 按自然日过滤最近N天（默认今天+昨天）
+            if config.get("enable_time_filter", True) and 'publish_time' in df_all.columns:
+                now_dt = datetime.now()
+                recent_days = max(1, int(config.get("filter_recent_calendar_days", 2)))
+                df_all['_parsed_dt'] = df_all['publish_time'].apply(lambda s: parse_weibo_time(s, now=now_dt))
+                before_count = len(df_all)
+                df_all = df_all[df_all['_parsed_dt'].apply(lambda d: is_within_recent_calendar_days(d, now_dt, recent_days))]
+                df_all = df_all.drop(columns=['_parsed_dt'])
+                logging.info(f"时间过滤（最近{recent_days}个自然日）后保留 {len(df_all)}/{before_count} 条")
             
             # 添加分类信息
             df_all['keyword_type'] = df_all['keyword'].map(keyword_to_type).fillna('other')
