@@ -20,7 +20,16 @@ class WeiboSpider:
         """
         self.output_dir = output_dir
         self.seen_weibos = set()
-        self.analyzer = MLAnalyzer()
+        try:
+            self.analyzer = MLAnalyzer()
+        except Exception:
+            # 在无 ML 依赖环境下允许运行基础抓取
+            class _Dummy:
+                def preprocess_text(self, text):
+                    return text
+                def analyze_weibos(self, weibos, min_likes=500):
+                    return {}
+            self.analyzer = _Dummy()
         
         # Create output directory if it doesn't exist
         if not os.path.exists(output_dir):

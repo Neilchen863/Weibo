@@ -16,7 +16,11 @@ class WeiboSpider:
     def __init__(self):
         self.seen_weibos = set()
         self.downloaded_images = set()  # 跟踪已下载的图片URL
-        self.ua = UserAgent()
+        # 尝试创建 UserAgent；若在受限网络环境（如 serverless）失败，则忽略
+        try:
+            self.ua = UserAgent()
+        except Exception:
+            self.ua = None
         self.base_url = "https://s.weibo.com/weibo"
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
@@ -57,9 +61,13 @@ class WeiboSpider:
         return random.uniform(2, 5)
     
     def _update_headers(self):
-        """更新请求头，防止被检测"""
-        # 固定使用Chrome UA，不随机更换
-        pass
+        """更新请求头，防止被检测。若 fake_useragent 可用则更新 UA，否则使用固定 UA。"""
+        try:
+            if self.ua:
+                self.headers["User-Agent"] = self.ua.random
+        except Exception:
+            # 保持默认固定 UA
+            pass
     
     def download_media(self, url, media_type, keyword, weibo_id):
         """

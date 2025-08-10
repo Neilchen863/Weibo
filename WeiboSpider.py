@@ -14,7 +14,10 @@ from fake_useragent import UserAgent
 class WeiboSpider:
     def __init__(self):
         self.seen_weibos = set()
-        self.ua = UserAgent()
+        try:
+            self.ua = UserAgent()
+        except Exception:
+            self.ua = None
         self.base_url = "https://s.weibo.com/weibo"
         self.headers = {
             "User-Agent": self.ua.random,
@@ -54,7 +57,11 @@ class WeiboSpider:
     
     def _update_headers(self):
         """更新请求头，防止被检测"""
-        self.headers["User-Agent"] = self.ua.random
+        try:
+            if self.ua:
+                self.headers["User-Agent"] = self.ua.random
+        except Exception:
+            pass
     
     # 以下媒体下载函数保留但在简化版中不会被调用
     def download_media(self, url, media_type, keyword, weibo_id):
@@ -386,7 +393,6 @@ class WeiboSpider:
             else:
                 print("不支持的cookie格式")
                 return
-            
-        print("Cookie设置成功")
+            print("Cookie设置成功")
         except Exception as e:
             print(f"设置Cookie失败: {str(e)}")

@@ -85,7 +85,7 @@ def render_home(message: str = '', latest_file: Optional[str] = None) -> str:
         <p class=\"muted\">本页面会将 Cookie 写入项目的 config.json，可选地写入关键词与用户URL文件，然后执行现有爬虫流程，完成后在下方提供 CSV 下载链接。</p>
         <button id=\"runBtn\" type=\"submit\">运行</button>
       </form>
-      {('<p class=\"msg\">' + message + '</p>') if message else ''}
+      {('<p class="msg">' + message + '</p>') if message else ''}
       {latest_link_html}
     </div>
     <p class=\"muted\" style=\"margin-top:16px\">关键词与用户由项目根目录下的 <code>keywords.txt</code> 与 <code>user_urls.txt</code> 提供。结果保存在 <code>results/</code>。</p>
