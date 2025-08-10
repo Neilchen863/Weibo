@@ -73,22 +73,30 @@ def render_home(message: str = '', latest_file: Optional[str] = None) -> str:
     <div class=\"card\">
       <form method=\"post\" action=\"/run\" onsubmit=\"return onSubmitForm()\">
         <label for=\"cookie\"><strong>输入你的微博 Cookie</strong></label>
-        <p class=\"muted\">建议直接粘贴浏览器里对 weibo.com 的整段 Cookie（以键=值; 键=值; ... 形式）。</p>
+        <p class=\"muted\">建议直接粘贴浏览器里对 weibo.com 的整段 Cookie（格式：键=值; 键=值; ...）。推荐至少包含 <code>SUB</code>、<code>SUBP</code>、<code>WBPSESS</code>、<code>SCF</code> 等键。</p>
+        <details style=\"margin:6px 0\"><summary class=\"muted\">如何获取 Cookie</summary>
+          <ol class=\"muted\">
+            <li>电脑浏览器登录 <code>weibo.com</code>。</li>
+            <li>按 F12 打开开发者工具，切到 Network 标签，刷新页面。</li>
+            <li>点任一请求（域名为 weibo.com），在 Request Headers 找到 <code>cookie</code>，复制整段值。</li>
+            <li>或在 Application/存储 - Cookies - 选中 <code>weibo.com</code>，导出合并为 <code>key=value; key=value; ...</code>。</li>
+          </ol>
+        </details>
         <textarea id=\"cookie\" name=\"cookie\" required placeholder=\"SCF=...; SUB=...; SUBP=...; WBPSESS=...\"></textarea>
         <hr />
-        <label for=\"keywords\"><strong>关键词（可选）</strong></label>
-        <p class=\"muted\">每行一个关键词；如留空则使用项目根目录的 <code>keywords.txt</code>。</p>
-        <textarea id=\"keywords\" name=\"keywords\" placeholder=\"演唱会\n粉丝见面会\n新歌\"></textarea>
+        <label for=\"keywords\"><strong>关键词与分类（可选）</strong></label>
+        <p class=\"muted\">对应文件为 <code>keyword and classification.txt</code>（CSV，含两列：<code>关键词,分类</code>）。此处每行一条，格式：<code>关键词,分类</code>；若省略分类则默认 <code>other</code>。</p>
+        <textarea id=\"keywords\" name=\"keywords\" placeholder=\"淬火年代,show\n路透,other\n演唱会,other\"></textarea>
         <label for=\"user_urls\"><strong>用户URL（可选）</strong></label>
         <p class=\"muted\">每行一个 weibo 用户主页 URL；如留空则使用项目根目录的 <code>user_urls.txt</code>。</p>
         <textarea id=\"user_urls\" name=\"user_urls\" placeholder=\"https://weibo.com/u/1669879400\nhttps://weibo.com/u/7051114584\"></textarea>
-        <p class=\"muted\">本页面会将 Cookie 写入项目的 config.json，可选地写入关键词与用户URL文件，然后执行现有爬虫流程，完成后在下方提供 CSV 下载链接。</p>
+        <p class=\"muted\">提交后：写入 <code>config.json</code>（Cookie）与 <code>keyword and classification.txt</code>/<code>user_urls.txt</code>（如提供），执行爬虫，完成后在下方提供 CSV 下载链接。</p>
         <button id=\"runBtn\" type=\"submit\">运行</button>
       </form>
       {('<p class="msg">' + message + '</p>') if message else ''}
       {latest_link_html}
     </div>
-    <p class=\"muted\" style=\"margin-top:16px\">关键词与用户由项目根目录下的 <code>keywords.txt</code> 与 <code>user_urls.txt</code> 提供。结果保存在 <code>results/</code>。</p>
+    <p class=\"muted\" style=\"margin-top:16px\">关键词从 <code>keyword and classification.txt</code> 读取（两列：<code>关键词,分类</code>）；用户从 <code>user_urls.txt</code> 读取；结果保存在 <code>results/</code>。</p>
   </body>
 </html>
 """
@@ -115,13 +123,23 @@ def run(cookie: str = Form(...), keywords: Optional[str] = Form(None), user_urls
     # 1) 更新 cookie
     update_cookie_in_config(cookie)
 
-    # 2) 可选写入 keywords 与 user_urls 文件
+    # 2) 可选写入关键词分类与用户URL文件
     try:
         if keywords is not None and keywords.strip():
-            with open(os.path.join(APP_DIR, 'keywords.txt'), 'w', encoding='utf-8') as f:
-                # 规范化换行并去掉空白行
-                lines = [line.strip() for line in keywords.replace('\r\n', '\n').split('\n') if line.strip()]
-                f.write('\n'.join(lines) + '\n')
+            # 写入到 "keyword and classification.txt"。允许单列或两列（关键词,分类）。
+            classification_path = os.path.join(APP_DIR, 'keyword and classification.txt')
+            raw_lines = [line.strip() for line in keywords.replace('\r\n', '\n').split('\n') if line.strip()]
+            rows = []
+            for line in raw_lines:
+                if ',' in line:
+                    kw, cls = line.split(',', 1)
+                    rows.append((kw.strip(), (cls.strip() or 'other')))
+                else:
+                    rows.append((line.strip(), 'other'))
+            with open(classification_path, 'w', encoding='utf-8') as f:
+                f.write('关键词,分类\n')
+                for kw, cls in rows:
+                    f.write(f'{kw},{cls}\n')
         if user_urls is not None and user_urls.strip():
             with open(os.path.join(APP_DIR, 'user_urls.txt'), 'w', encoding='utf-8') as f:
                 lines = [line.strip() for line in user_urls.replace('\r\n', '\n').split('\n') if line.strip()]
