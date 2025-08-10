@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import json
 import logging
 import pandas as pd
@@ -9,10 +10,12 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from fetch import WeiboSpider
 from keyword_manager import KeywordManager
-from ml_analyzer import MLAnalyzer
 import time
 import base64
-from PIL import Image
+try:
+    from PIL import Image  # 可选依赖
+except Exception:
+    Image = None
 import io
 import re
 import unicodedata
@@ -84,7 +87,7 @@ def image_to_base64(image_path, max_size=(300, 300)):
     - Base64编码字符串
     """
     try:
-        if not os.path.exists(image_path):
+        if not os.path.exists(image_path) or Image is None:
             return ""
         
         # 打开图片并调整大小以减少文件大小
@@ -582,15 +585,18 @@ def main():
                     print(f"   • 或运行命令: open {html_file}")
                     print("="*60)
                     
-                    # 询问是否立即打开
-                    try:
-                        user_input = input("\n是否立即在浏览器中打开画廊？(y/N): ").strip().lower()
-                        if user_input in ['y', 'yes', '是']:
-                            import webbrowser
-                            webbrowser.open(f'file://{full_path}')
-                            print("✅ 已在浏览器中打开图片画廊")
-                    except (EOFError, KeyboardInterrupt):
-                        print("\n跳过打开画廊")
+                    # 询问是否立即打开（仅在交互式终端中）
+                    if sys.stdin and sys.stdin.isatty():
+                        try:
+                            user_input = input("\n是否立即在浏览器中打开画廊？(y/N): ").strip().lower()
+                            if user_input in ['y', 'yes', '是']:
+                                import webbrowser
+                                webbrowser.open(f'file://{full_path}')
+                                print("✅ 已在浏览器中打开图片画廊")
+                        except (EOFError, KeyboardInterrupt):
+                            print("\n跳过打开画廊")
+                    else:
+                        print("非交互环境，自动跳过打开画廊提示")
                         
             except ImportError:
                 logging.warning("图片画廊生成器模块未找到，跳过画廊生成")

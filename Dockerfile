@@ -10,5 +10,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# 默认运行命令（你可以换成 weibo_spider.py，如果它是主入口）
-CMD ["python", "main.py"]
+# 暴露网页端口
+EXPOSE 8000
+
+# 以网页服务启动（FastAPI + uvicorn）
+CMD ["uvicorn", "webapp:app", "--host", "0.0.0.0", "--port", "8000"]
