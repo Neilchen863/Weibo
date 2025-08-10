@@ -142,13 +142,27 @@ def render_home(message: str = '', latest_file: Optional[str] = None) -> str:
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
   <title>WeiboSpider Web</title>
   <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; padding: 24px; max-width: 860px; margin: 0 auto; }}
-    .card {{ border: 1px solid #eee; border-radius: 8px; padding: 20px; box-shadow: 0 1px 2px rgba(0,0,0,.05); }}
-    textarea {{ width: 100%; min-height: 120px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 12px; }}
-    button {{ background: #2563eb; color: #fff; padding: 10px 16px; border: none; border-radius: 6px; cursor: pointer; }}
-    button:disabled {{ background: #94a3b8; }}
-    .muted {{ color: #64748b; font-size: 13px; }}
-    .msg {{ margin: 12px 0; color: #16a34a; }}
+    :root {{ --bg: #0b1324; --card: #111a33; --muted: #8aa0c6; --text: #e6eefc; --primary: #3b82f6; --primary-2: #1d4ed8; --danger: #ef4444; --danger-2: #b91c1c; --border: rgba(255,255,255,.08); }}
+    * {{ box-sizing: border-box; }}
+    body {{ font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; background: linear-gradient(180deg, #0b1021 0%, #0e1430 100%); color: var(--text); padding: 24px; margin: 0; }}
+    h2 {{ max-width: 980px; margin: 0 auto 14px; letter-spacing: .3px; }}
+    .card {{ max-width: 980px; margin: 0 auto 16px; border: 1px solid var(--border); background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)); border-radius: 12px; padding: 20px; box-shadow: 0 8px 30px rgba(0,0,0,.15); }}
+    label {{ display:block; margin: 8px 0 6px; font-weight: 600; }}
+    textarea {{ width: 100%; min-height: 120px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 12px; background: #0c152d; border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 10px 12px; outline: none; }}
+    textarea:focus {{ border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59,130,246,.15); }}
+    button {{ padding: 10px 16px; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: transform .05s ease, background .2s; }}
+    button:active {{ transform: translateY(1px); }}
+    #runBtn {{ background: var(--primary); color: #fff; }}
+    #runBtn:hover {{ background: var(--primary-2); }}
+    button[type="button"] {{ background: var(--danger); color: #fff; }}
+    button[type="button"]:hover {{ background: var(--danger-2); }}
+    button:disabled {{ background: #334155; color: #cbd5e1; cursor: not-allowed; }}
+    .muted {{ color: var(--muted); font-size: 13px; }}
+    .msg {{ margin: 10px 0 0; color: #22c55e; font-size: 14px; }}
+    details {{ border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; background: rgba(255,255,255,.03); }}
+    details summary {{ cursor: pointer; }}
+    #latestCsv {{ max-width: 980px; margin: 10px auto; }}
+    pre#console {{ background:#0b1021;color:#a6e22e;padding:12px;border-radius:12px;height:360px;overflow:auto;white-space:pre-wrap;border:1px solid var(--border); max-width: 980px; margin: 0 auto; }}
   </style>
   <script>
     let logTimer = null;
