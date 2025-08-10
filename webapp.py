@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse, JSO
 
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIR = os.path.join(APP_DIR, 'frontend')
 CONFIG_PATH = os.path.join(APP_DIR, 'config.json')
 RESULTS_DIR = os.path.join(APP_DIR, 'results')
 
@@ -258,8 +259,10 @@ app = FastAPI(title="WeiboSpider Web")
 @app.get('/', response_class=HTMLResponse)
 def home() -> str:
     ensure_dirs()
-    latest = find_latest_csv()
-    return render_home(message='', latest_file=latest)
+    index_path = os.path.join(FRONTEND_DIR, 'index.html')
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return render_home('', None)
 
 
 @app.get('/health', response_class=PlainTextResponse)
@@ -267,7 +270,7 @@ def health() -> str:
     return 'ok'
 
 
-@app.post('/run', response_class=HTMLResponse)
+@app.post('/run', response_class=JSONResponse)
 def run(cookie: str = Form(...), keywords: Optional[str] = Form(None), user_urls: Optional[str] = Form(None)):
     ensure_dirs()
     # 1) 更新 cookie
@@ -295,21 +298,13 @@ def run(cookie: str = Form(...), keywords: Optional[str] = Form(None), user_urls
                 lines = [line.strip() for line in user_urls.replace('\r\n', '\n').split('\n') if line.strip()]
                 f.write('\n'.join(lines) + '\n')
     except Exception as e:
-        latest = find_latest_csv()
-        return render_home(message=f"写入关键词/用户URL失败: {e}", latest_file=latest)
+        return JSONResponse({'ok': False, 'msg': f'写入关键词/用户URL失败: {e}'})
 
     # 3) 启动后台任务（子进程执行 main.py），立即返回页面
     started = _start_job()
     if not started:
-        latest = find_latest_csv()
-        return render_home(message="已有任务在运行，无法重复启动。", latest_file=latest)
-
-    # 4) 寻找最新 CSV 并展示下载链接
-    latest = find_latest_csv()
-    if latest:
-        return render_home(message='任务已启动，检测到最近的 CSV。', latest_file=latest)
-    else:
-        return render_home(message='任务已启动，请在下方查看实时日志，完成后会出现 CSV 下载链接。', latest_file=None)
+        return JSONResponse({'ok': False, 'msg': '已有任务在运行，无法重复启动。', 'running': True})
+    return JSONResponse({'ok': True, 'msg': '任务已启动', 'running': True})
 
 
 @app.get('/download/{filename}', response_class=FileResponse)

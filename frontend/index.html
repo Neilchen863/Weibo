@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WeiboSpider 网页版</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-900 text-slate-100">
+  <div class="max-w-6xl mx-auto p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h1 class="text-2xl font-bold">WeiboSpider 网页版</h1>
+      <div class="flex items-center gap-3 text-sm">
+        <span id="statusPill" class="px-2.5 py-1 rounded-full border border-slate-600 text-slate-300">待机</span>
+        <span id="latestCsv" class="text-slate-400"></span>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-5">
+        <form id="runForm" class="space-y-4">
+          <div>
+            <label class="font-semibold">输入你的微博 Cookie</label>
+            <p class="text-xs text-slate-400 mt-1">建议粘贴浏览器里对 weibo.com 的整段 Cookie（键=值; 键=值; ...）。推荐至少包含 SUB、SUBP、WBPSESS、SCF 等键。</p>
+            <details class="mt-2 text-slate-300/90 bg-slate-900/50 border border-slate-700 rounded-lg p-3">
+              <summary class="cursor-pointer select-none">如何获取 Cookie</summary>
+              <ol class="list-decimal ml-5 text-sm mt-2">
+                <li>电脑浏览器登录 weibo.com</li>
+                <li>按 F12 打开开发者工具 → Network → 刷新页面</li>
+                <li>随便点一个 weibo.com 请求 → Request Headers → 复制 cookie 值</li>
+                <li>或在 Application/存储 - Cookies - 选中 weibo.com，导出拼成 key=value; key=value; ...</li>
+              </ol>
+            </details>
+            <textarea id="cookie" name="cookie" required class="mono w-full mt-2 rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm" placeholder="SCF=...; SUB=...; SUBP=...; WBPSESS=..."></textarea>
+          </div>
+
+          <div class="border-t border-slate-700 pt-4">
+            <label class="font-semibold">关键词与分类（可选）</label>
+            <p class="text-xs text-slate-400 mt-1">写入 keyword and classification.txt（两列 CSV：关键词,分类）。下方每行一条，若省略分类则默认 other。</p>
+            <textarea id="keywords" name="keywords" class="mono w-full mt-2 rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm" placeholder="淬火年代,show
+路透,other
+演唱会,other"></textarea>
+          </div>
+
+          <div>
+            <label class="font-semibold">用户URL（可选）</label>
+            <p class="text-xs text-slate-400 mt-1">每行一个 weibo 用户主页 URL；如留空则使用项目根目录的 user_urls.txt。</p>
+            <textarea id="user_urls" name="user_urls" class="mono w-full mt-2 rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm" placeholder="https://weibo.com/u/1669879400
+https://weibo.com/u/7051114584"></textarea>
+          </div>
+
+          <div class="flex gap-2">
+            <button id="runBtn" class="px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-semibold" type="submit">运行</button>
+            <button id="stopBtn" class="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-semibold" type="button">停止</button>
+          </div>
+          <div id="msg" class="text-green-400 text-sm"></div>
+          <div class="text-sm text-slate-400">结果会保存到 results/。生成后会出现下载链接。</div>
+        </form>
+      </div>
+
+      <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-5">
+        <h3 class="font-semibold mb-2">运行日志</h3>
+        <pre id="console" class="mono bg-slate-950 border border-slate-800 rounded-lg p-3 h-[420px] overflow-auto text-emerald-300 text-sm"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let logTimer = null;
+    const el = (id)=>document.getElementById(id);
+
+    async function fetchJSON(url, opts={}) {
+      const r = await fetch(url, { ...opts, headers: { ...(opts.headers||{}) } });
+      return r.json();
+    }
+    function startPolling(){ if(!logTimer) logTimer=setInterval(updateLogs, 1000); }
+    function stopPolling(){ if(logTimer){ clearInterval(logTimer); logTimer=null; } }
+    async function updateLogs(){
+      try{
+        const data = await fetchJSON('/logs');
+        el('console').textContent = data.logs || '';
+        el('console').scrollTop = el('console').scrollHeight;
+        el('runBtn').disabled = !!data.running;
+        el('statusPill').textContent = data.running ? '运行中' : '待机';
+        if(data.running){ el('statusPill').className='px-2.5 py-1 rounded-full border border-emerald-500/40 text-emerald-300'; }
+        else { el('statusPill').className='px-2.5 py-1 rounded-full border border-slate-600 text-slate-300'; }
+        if(data.latest_csv){
+          el('latestCsv').innerHTML = '最近CSV：<a class="underline text-cyan-400" href="/download/' + data.latest_csv_name + '">' + data.latest_csv_name + '</a>';
+        }
+      }catch(e){ /* ignore */ }
+    }
+
+    el('runForm').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      el('msg').textContent='';
+      const fd = new FormData(e.target);
+      const data = await fetchJSON('/run', { method:'POST', body: fd });
+      if(data.ok){ el('msg').textContent='任务已启动'; startPolling(); }
+      else { el('msg').textContent = data.msg || '启动失败'; }
+    });
+    el('stopBtn').addEventListener('click', async ()=>{
+      await fetch('/stop', { method:'POST' });
+      stopPolling(); startPolling();
+    });
+    window.addEventListener('load', ()=>{ startPolling(); });
+  </script>
+</body>
+</html>
